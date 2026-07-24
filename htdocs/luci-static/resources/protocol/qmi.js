@@ -1,9 +1,62 @@
 'use strict';
 'require rpc';
 'require dom';
+'require uci';
 'require form';
 'require network';
 'require wwand.bands as bands';
+
+/* Network-native model: radio/SIM/hardware options live on a `config wwand_modem`
+   section in /etc/config/network, referenced from the interface via `option
+   modem`; the interface itself carries only the connection (apn/auth/pdp/mux).
+   The helpers below let the proto form (which binds to the interface section)
+   transparently store the modem options in the wwand_modem section, creating it
+   + `option modem` on first save, and reading a legacy inline value when no
+   wwand_modem exists yet — so saving ALWAYS converts an old config to new-style. */
+function modemSid(ifaceSid) {
+	var ref = uci.get('network', ifaceSid, 'modem');
+	if (ref && uci.get('network', ref) != null)
+		return ref;
+	return null;
+}
+
+function ensureModemSid(ifaceSid) {
+	var sid = modemSid(ifaceSid);
+	if (sid)
+		return sid;
+	var base = 'wwmodem_' + ifaceSid, name = base, i = 0;
+	while (uci.get('network', name) != null)
+		name = base + (++i);
+	uci.add('network', 'wwand_modem', name);
+	uci.set('network', ifaceSid, 'modem', name);
+	return name;
+}
+
+/* Redirect a form option's storage to the interface's wwand_modem section.
+   Reads new-style (wwand_modem) or, until one exists, legacy inline; writes
+   new-style and clears any legacy inline copy. */
+function bindModem(o) {
+	o.cfgvalue = function(sid) {
+		var opt = this.ucioption || this.option;
+		var msid = modemSid(sid);
+		return uci.get('network', msid || sid, opt);
+	};
+	o.write = function(sid, val) {
+		var opt = this.ucioption || this.option;
+		var msid = ensureModemSid(sid);
+		uci.set('network', msid, opt, val);
+		if (msid != sid)
+			uci.unset('network', sid, opt);
+	};
+	o.remove = function(sid) {
+		var opt = this.ucioption || this.option;
+		var msid = modemSid(sid);
+		if (msid)
+			uci.unset('network', msid, opt);
+		uci.unset('network', sid, opt);
+	};
+	return o;
+}
 
 /* Talk to the wwand daemon directly over ubus (it exposes the 'wwand'
    object). Read-only queries only; interface configuration is written to
@@ -320,10 +373,13 @@ return network.registerProtocol('qmi', {
 		o._netdev = netdev;
 
 		/* ---- general ---- */
+		/* the modem IDENTITY (stored on the wwand_modem section); the mux channel
+		   is a separate field below. */
 		o = s.taboption('general', form.Value, '_modem_device', _('Modem device'),
-			_('Parent network device or /dev/cdc-wdmX. Mux child names like wwan0m1 are allowed.'));
+			_('The modem: its parent network device (e.g. wwan0) or /dev/cdc-wdmX. For multiple contexts on one modem use the Mux channel field, not a wwan0mN name here.'));
 		o.ucioption = 'device';
 		o.rmempty = false;
+		bindModem(o);
 		o.load = function(section_id) {
 			return Promise.all([
 				L.resolveDefault(callStatus(), {}),
@@ -341,19 +397,43 @@ return network.registerProtocol('qmi', {
 			}, this));
 		};
 
-		o = s.taboption('general', form.Value, 'apn', _('APN'),
-			_('Leave empty for the default APN, or "#N" to use modem profile N as-is.'));
+		/* Mux channel: this connection's QMAP channel on the modem. 0 = the plain
+		   netdev (no mux); N > 0 = wwan0mN. Several interfaces on one modem each
+		   pick a different channel. Stored on the interface (connection-side). */
+		o = s.taboption('general', form.Value, 'mux_id', _('Mux channel'),
+			_('QMAP multiplex channel for this connection (0 = no mux). Use different channels for multiple contexts on one modem.'));
+		o.placeholder = '0';
+		o.datatype = 'range(0,15)';
 
-		o = s.taboption('general', form.ListValue, 'pdptype', _('PDP type'),
+		o = s.taboption('general', form.Value, 'apn', _('APN'),
+			_('Leave empty for the default APN (or the SIM override / network default), or "#N" to use modem profile N as-is.'));
+
+		o = s.taboption('general', form.ListValue, 'pdp_type', _('PDP type'),
 			_('IP version(s) to request for the bearer and the LTE attach. IPv4+IPv6 is recommended — some subscriptions reject an IPv4-only attach (EMM cause 33).'));
 		o.default = 'ipv4v6';
 		o.value('ipv4v6', _('IPv4 + IPv6'));
 		o.value('ipv4', _('IPv4'));
 		o.value('ipv6', _('IPv6'));
+		/* read a legacy `pdptype` (old proto js), write the canonical pdp_type */
+		o.cfgvalue = function(sid) {
+			return uci.get('network', sid, 'pdp_type') || uci.get('network', sid, 'pdptype');
+		};
+		o.write = function(sid, val) {
+			uci.set('network', sid, 'pdp_type', val);
+			uci.unset('network', sid, 'pdptype');
+		};
+		o.remove = function(sid) {
+			uci.unset('network', sid, 'pdp_type');
+			uci.unset('network', sid, 'pdptype');
+		};
 
+		/* PIN is a modem/SIM property -> stored on the wwand_modem section. A
+		   per-SIM PIN override (different card in a slot / eUICC profile) lives in
+		   the SIMs section of the Mobile Data app. */
 		o = s.taboption('general', form.Value, 'pincode', _('PIN'),
-			_('SIM PIN. Entered automatically on each start; leave empty for an unlocked SIM.'));
+			_('Default SIM PIN for this modem. Entered automatically on each start; leave empty for an unlocked SIM.'));
 		o.datatype = 'and(uinteger,minlength(4),maxlength(8))';
+		bindModem(o);
 
 		o = s.taboption('general', form.ListValue, 'auth', _('Authentication type'),
 			_('PAP/CHAP authentication for the APN. Most operators need none.'));
@@ -387,14 +467,17 @@ return network.registerProtocol('qmi', {
 		o.value('gsm', 'GSM');
 		o.value('td-scdma', 'TD-SCDMA');
 		o.value('cdma', 'CDMA');
+		bindModem(o);
 
 		o = s.taboption('advanced', form.Value, 'mcc', _('MCC'),
 			_('Mobile Country Code for manual network selection.'));
 		o.datatype = 'uinteger';
+		bindModem(o);
 
 		o = s.taboption('advanced', form.Value, 'mnc', _('MNC'),
 			_('Mobile Network Code (requires MCC).'));
 		o.datatype = 'uinteger';
+		bindModem(o);
 
 		o = s.taboption('advanced', form.Value, 'mtu', _('Override MTU'),
 			_('Force a fixed MTU on the WAN link instead of the modem/network value.'));
@@ -413,30 +496,36 @@ return network.registerProtocol('qmi', {
 			_('Seconds to wait before initializing the modem.'));
 		o.placeholder = '0';
 		o.datatype = 'min(0)';
+		bindModem(o);
 
 		o = s.taboption('advanced', form.Value, 'failreboot', _('Reboot after N failures'),
 			_('Reboot the router after this many failed connection attempts (0 = never).'));
 		o.placeholder = '100';
 		o.datatype = 'uinteger';
+		bindModem(o);
 
 		o = s.taboption('advanced', form.Value, 'zero_rx_timeout', _('Zero-RX timeout'),
 			_('Restart the connection after this many seconds without received packets (0 = off).'));
 		o.placeholder = '21600';
 		o.datatype = 'uinteger';
+		bindModem(o);
 
 		o = s.taboption('advanced', form.Flag, 'location', _('Enable GPS/location'),
 			_('Start the modem GNSS engine and expose position over ubus.'));
 		o.default = '0';
+		bindModem(o);
 
 		o = s.taboption('advanced', form.DynamicList, 'at_init', _('Extra AT init commands'),
 			_('Vendor AT commands sent once after the modem is detected, before registration.'));
 		o.placeholder = 'ATE0';
+		bindModem(o);
 
-		/* ---- wwand-specific advanced options (previously config-only) ---- */
+		/* ---- wwand-specific advanced options (stored on the wwand_modem) ---- */
 		o = s.taboption('advanced', form.Value, 'sim_slot', _('SIM slot'),
 			_('Physical SIM slot to activate on multi-slot / eSIM modems (0 = leave as-is).'));
 		o.placeholder = '0';
 		o.datatype = 'uinteger';
+		bindModem(o);
 
 		o = s.taboption('advanced', form.ListValue, 'mux', _('Data multiplexing'),
 			_('Kernel datapath backend for QMAP multiplexing. Leave on auto unless a modem misbehaves.'));
@@ -444,11 +533,13 @@ return network.registerProtocol('qmi', {
 		o.value('auto', _('Automatic'));
 		o.value('rmnet', 'rmnet');
 		o.value('qmimux', 'qmimux');
+		bindModem(o);
 
 		o = s.taboption('advanced', form.Value, 'dl_datagram_max_size', _('Aggregation DL datagram size'),
 			_('Max downlink QMAP aggregation datagram in bytes (0 = board/model default).'));
 		o.placeholder = '0';
 		o.datatype = 'uinteger';
+		bindModem(o);
 
 		o = s.taboption('advanced', form.Value, 'profile', _('Attach profile index'),
 			_('3GPP profile (CID) used for the LTE attach and default bearer (default derived from mux id / 1).'));
@@ -456,15 +547,18 @@ return network.registerProtocol('qmi', {
 		o.datatype = 'uinteger';
 
 		o = s.taboption('advanced', form.Value, 'usb_path', _('USB path binding'),
-			_('Bind this interface to the modem at a fixed USB topology path (stable across renumbering on multi-modem setups).'));
+			_('Bind the modem at a fixed USB topology path (stable across renumbering on multi-modem setups).'));
+		bindModem(o);
 
 		o = s.taboption('advanced', form.Value, 'tty', _('AT control TTY'),
 			_('Override the auto-detected AT serial port (e.g. /dev/ttyUSB2).'));
+		bindModem(o);
 
 		o = s.taboption('advanced', form.Value, 'stats_interval', _('Telemetry interval'),
 			_('Seconds between throughput/signal telemetry samples while connected.'));
 		o.placeholder = '60';
 		o.datatype = 'uinteger';
+		bindModem(o);
 
 		o = s.taboption('advanced', form.Value, 'settings_poll', _('Settings poll interval'),
 			_('Seconds between re-checks of network-pushed IP/DNS/MTU settings (0 = off).'));
@@ -522,14 +616,17 @@ return network.registerProtocol('qmi', {
 		lock4gOpt = s.taboption('celllock', form.DynamicList, 'lock_4g', _('LTE cell lock'),
 			_('Lock to LTE cells, one entry "earfcn:pci" each (several entries = cell list). Use the "Lock" buttons above to add the current or a neighbour cell.'));
 		lock4gOpt.placeholder = '1300:246';
+		bindModem(lock4gOpt);
 
 		lock5gOpt = s.taboption('celllock', form.Value, 'lock_5g', _('5G NR SA cell lock'),
 			_('Lock to a 5G SA cell: "pci:arfcn:scs:band". Use the "Lock this 5G cell" button above to prefill it from the current cell.'));
 		lock5gOpt.placeholder = '242:431070:15:1';
+		bindModem(lock5gOpt);
 		o = lock5gOpt;
 
 		o = s.taboption('celllock', form.Flag, 'lock_persist', _('Persist lock in modem'),
 			_('Store the cell lock in modem non-volatile memory.'));
 		o.default = '0';
+		bindModem(o);
 	}
 });
