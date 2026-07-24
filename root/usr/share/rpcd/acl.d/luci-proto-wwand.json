@@ -5,6 +5,11 @@
 			"ubus": {
 				"wwand": [ "status", "modem_signal", "modem_cells", "context_status" ]
 			}
+		},
+		"write": {
+			"ubus": {
+				"wwand": [ "modem_repower" ]
+			}
 		}
 	}
 }

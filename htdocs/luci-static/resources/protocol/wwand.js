@@ -1,6 +1,7 @@
 'use strict';
 'require rpc';
 'require dom';
+'require ui';
 'require uci';
 'require form';
 'require network';
@@ -96,6 +97,34 @@ var callFileList = rpc.declare({
 	}
 });
 
+/* All *named* GPIO lines (from the DT gpio-line-names), for the reset/power
+   GPIO picker. Skips the export/unexport control files and the raw
+   gpiochipN/gpioNNN entries. */
+var callGpioList = rpc.declare({
+	object: 'file',
+	method: 'list',
+	params: [ 'path' ],
+	expect: { entries: [] },
+	filter: function(list) {
+		var rv = [];
+		for (var i = 0; i < list.length; i++) {
+			var n = list[i].name;
+			if (n && n != 'export' && n != 'unexport' && !/^gpio(chip)?[0-9]+$/.test(n))
+				rv.push(n);
+		}
+		return rv.sort();
+	}
+});
+
+/* Manual hardware repower/reset of the modem via the board profile (reset GPIO
+   pulse or USB power-cycle). Same path the recovery ladder uses. */
+var callRepower = rpc.declare({
+	object: 'wwand',
+	method: 'modem_repower',
+	params: [ 'modem' ],
+	expect: {}
+});
+
 /* Band/frequency helpers live in the shared wwand.bands module (single
    source of truth across the proto handler and the status page). */
 var lteEarfcn = function(earfcn) { return bands.lteEarfcn(earfcn); };
@@ -148,6 +177,11 @@ function renderStatus(netdev) {
 			rows.push([ _('Modem'), '%s%s'.format(modem.model || '?',
 				modem.imei ? ' / IMEI %s'.format(modem.imei) : '') ]);
 			rows.push([ _('State'), modem.state || '?' ]);
+
+			/* surface a modem we are waiting on (after boot / a modem reboot the
+			   control device may take a while to (re)appear) so the admin sees it */
+			if (modem.control_note)
+				rows.push([ _('Note'), E('span', { 'style': 'color:#b8860b' }, modem.control_note) ]);
 
 			var plmn = reg.plmn;
 			if (plmn)
@@ -552,6 +586,41 @@ var wwandProtocol = {
 			_('Optional: bind the modem at a fixed USB topology path (stable across renumbering on multi-modem setups), like a wifi-device `path`. Leave empty to bind by the modem device above.'));
 		o.ucioption = 'path';
 		bindModem(o);
+
+		/* Modem RESET GPIO — an editable dropdown of the named GPIO lines the
+		   kernel exposes. When set, recovery pulses it instead of power-cycling.
+		   If the board already ships a default reset line, hint at it. */
+		o = s.taboption('advanced', form.Value, 'reset_gpio', _('Modem reset GPIO'),
+			_('Named GPIO wired to the modem RESET line. When set, recovery resets the modem through it (invert, wait 30 s, restore) instead of cycling USB power.'));
+		o.ucioption = 'reset_gpio';
+		bindModem(o);
+		o.load = function(section_id) {
+			var self = this;
+			return Promise.all([
+				L.resolveDefault(callGpioList('/sys/class/gpio/'), []),
+				L.resolveDefault(callStatus(), {})
+			]).then(function(res) {
+				(res[0] || []).forEach(function(n) { self.value(n, n); });
+				var brg = (res[1] || {}).board && res[1].board.reset_gpio;
+				if (brg)
+					self.description = _('Named GPIO wired to the modem RESET line (invert, wait 30 s, restore instead of a USB power-cycle). This board already provides a default reset GPIO "%s" — set this only to override it.').format(brg);
+				return self.cfgvalue(section_id);
+			});
+		};
+
+		/* manual repower/reset button (needs a board power or reset GPIO) */
+		o = s.taboption('advanced', form.Button, '_repower', _('Reset modem'),
+			_('Power-cycle (or, if a reset GPIO is configured, reset) the modem now. Useful to recover a modem that hung or dropped off USB.'));
+		o.inputtitle = _('Repower modem');
+		o.inputstyle = 'remove';
+		o.onclick = function() {
+			return callRepower('').then(function(res) {
+				if (res && res.ok)
+					ui.addNotification(null, E('p', {}, _('Modem repower triggered (%s).').format(res.action)), 'info');
+				else
+					ui.addNotification(null, E('p', {}, _('Repower unavailable: %s.').format((res && res.error) || _('no board power/reset control'))), 'warning');
+			});
+		};
 
 		o = s.taboption('advanced', form.Value, 'tty', _('AT control TTY'),
 			_('Override the auto-detected AT serial port (e.g. /dev/ttyUSB2).'));
