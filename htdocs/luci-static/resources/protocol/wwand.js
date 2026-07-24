@@ -366,6 +366,7 @@ network.registerErrorCode('CONNECT_FAILED', _('Connection attempt failed'));
 network.registerErrorCode('PIN_FAILED',     _('SIM PIN error'));
 network.registerErrorCode('NO_CONTEXT',     _('Context not found'));
 network.registerErrorCode('NO_IFACE',       _('The interface could not be found'));
+network.registerErrorCode('WAITING_MODEM',  _('Waiting for modem'));
 
 /* One protocol descriptor, registered under both the current name `wwand`
    and the historical `qmi` alias — see the tail of this file. */
