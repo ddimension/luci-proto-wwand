@@ -6,6 +6,8 @@
 'require form';
 'require network';
 'require wwand.bands as bands';
+'require wwand.modemopts as modemopts';
+'require wwand.simlist as simlist';
 
 /* Network-native model: radio/SIM/hardware options live on a `config wwand_modem`
    section in /etc/config/network, referenced from the interface via `option
@@ -403,17 +405,21 @@ var wwandProtocol = {
 		var o, dev = this.getL3Device() || this.getDevice();
 		var netdev = dev ? dev.getName() : null;
 
-		s.tab('celllock', _('Cell Lock'), _('Lock the modem to specific radio cells. The current cell environment is shown below.'));
+		/* Our tabs alongside the OpenWrt defaults (General/Firewall/DHCP). The
+		   modem-owned tabs (Modem & SIM / Radio & Cell / Resilience) edit the
+		   referenced wwand_modem inline (WireGuard-style); the same option set is
+		   available standalone on Network → Modems (shared via wwand.modemopts). */
+		s.tab('connection', _('Connection'), _('APN and data-bearer settings for this connection.'));
+		s.tab('modem', _('Modem & SIM'), _('The modem hardware and its SIM.'));
+		s.tab('radio', _('Radio & Cell'), _('Radio technology, manual operator selection and cell lock.'));
+		s.tab('resilience', _('Resilience'), _('Recovery, watchdogs and telemetry cadence.'));
 
-		/* ---- live status (top of general tab) ---- */
+		/* ---- General: live status + the modem this connection uses ---- */
 		o = liveField(s, 'general', '_status', _('Modem status'), renderStatus);
 		o._netdev = netdev;
 
-		/* ---- general ---- */
-		/* the modem IDENTITY (stored on the wwand_modem section); the mux channel
-		   is a separate field below. */
-		o = s.taboption('general', form.Value, '_modem_device', _('Modem device'),
-			_('The modem: its parent network device (e.g. wwan0) or /dev/cdc-wdmX. For multiple contexts on one modem use the Mux channel field, not a wwan0mN name here.'));
+		o = s.taboption('general', form.Value, '_modem_device', _('Modem'),
+			_('The modem this connection runs on — its network device (e.g. wwan0) or /dev/cdc-wdmX. Several connections can share one modem via different mux channels; its hardware / SIM / radio settings are on the tabs below (or manage them on Network → Modems).'));
 		o.ucioption = 'device';
 		o.rmempty = false;
 		bindModem(o);
@@ -434,18 +440,11 @@ var wwandProtocol = {
 			}, this));
 		};
 
-		/* Mux channel: this connection's QMAP channel on the modem. 0 = the plain
-		   netdev (no mux); N > 0 = wwan0mN. Several interfaces on one modem each
-		   pick a different channel. Stored on the interface (connection-side). */
-		o = s.taboption('general', form.Value, 'mux_id', _('Mux channel'),
-			_('QMAP multiplex channel for this connection (0 = no mux). Use different channels for multiple contexts on one modem.'));
-		o.placeholder = '0';
-		o.datatype = 'range(0,15)';
-
-		o = s.taboption('general', form.Value, 'apn', _('APN'),
+		/* ---- Connection (interface-owned) ---- */
+		o = s.taboption('connection', form.Value, 'apn', _('APN'),
 			_('Leave empty for the default APN (or the SIM override / network default), or "#N" to use modem profile N as-is.'));
 
-		o = s.taboption('general', form.ListValue, 'pdp_type', _('PDP type'),
+		o = s.taboption('connection', form.ListValue, 'pdp_type', _('PDP type'),
 			_('IP version(s) to request for the bearer and the LTE attach. IPv4+IPv6 is recommended — some subscriptions reject an IPv4-only attach (EMM cause 33).'));
 		o.default = 'ipv4v6';
 		o.value('ipv4v6', _('IPv4 + IPv6'));
@@ -464,15 +463,7 @@ var wwandProtocol = {
 			uci.unset('network', sid, 'pdptype');
 		};
 
-		/* PIN is a modem/SIM property -> stored on the wwand_modem section. A
-		   per-SIM PIN override (different card in a slot / eUICC profile) lives in
-		   the SIMs section of the Mobile Data app. */
-		o = s.taboption('general', form.Value, 'pincode', _('PIN'),
-			_('Default SIM PIN for this modem. Entered automatically on each start; leave empty for an unlocked SIM.'));
-		o.datatype = 'and(uinteger,minlength(4),maxlength(8))';
-		bindModem(o);
-
-		o = s.taboption('general', form.ListValue, 'auth', _('Authentication type'),
+		o = s.taboption('connection', form.ListValue, 'auth', _('Authentication type'),
 			_('PAP/CHAP authentication for the APN. Most operators need none.'));
 		o.default = 'none';
 		o.value('none', _('None'));
@@ -480,182 +471,70 @@ var wwandProtocol = {
 		o.value('chap', 'CHAP');
 		o.value('both', 'PAP/CHAP');
 
-		o = s.taboption('general', form.Value, 'username', _('PAP/CHAP username'),
+		o = s.taboption('connection', form.Value, 'username', _('PAP/CHAP username'),
 			_('Only if the APN requires authentication.'));
 		o.depends('auth', 'pap');
 		o.depends('auth', 'chap');
 		o.depends('auth', 'both');
 
-		o = s.taboption('general', form.Value, 'password', _('PAP/CHAP password'));
+		o = s.taboption('connection', form.Value, 'password', _('PAP/CHAP password'));
 		o.depends('auth', 'pap');
 		o.depends('auth', 'chap');
 		o.depends('auth', 'both');
 		o.password = true;
 
-		/* ---- advanced ---- */
-		o = s.taboption('advanced', form.ListValue, 'modes', _('Radio technology'),
-			_('Restrict the modem to certain radio access technologies.'));
-		o.value('', _('Modem default'));
-		o.value('all', _('All'));
-		o.value('lte', 'LTE');
-		o.value('nr5g', '5G NR');
-		o.value('lte,nr5g', 'LTE + 5G NR');
-		o.value('umts', 'UMTS');
-		o.value('gsm', 'GSM');
-		o.value('td-scdma', 'TD-SCDMA');
-		o.value('cdma', 'CDMA');
-		bindModem(o);
-
-		o = s.taboption('advanced', form.Value, 'mcc', _('MCC'),
-			_('Mobile Country Code for manual network selection.'));
-		o.datatype = 'uinteger';
-		bindModem(o);
-
-		o = s.taboption('advanced', form.Value, 'mnc', _('MNC'),
-			_('Mobile Network Code (requires MCC).'));
-		o.datatype = 'uinteger';
-		bindModem(o);
-
-		o = s.taboption('advanced', form.Value, 'mtu', _('Override MTU'),
-			_('Force a fixed MTU on the WAN link instead of the modem/network value.'));
-		o.placeholder = dev ? (dev.getMTU() || 1500) : 1500;
-		o.datatype = 'max(9200)';
-
-		o = s.taboption('advanced', form.Flag, 'use_pushed_mtu', _('Use modem-pushed MTU'),
-			_('Apply the MTU the network advertises for the bearer (default on).'));
-		o.default = '1';
-
-		o = s.taboption('advanced', form.Flag, 'use_pushed_prefix', _('Use network-pushed IPv4 prefix'),
-			_('Off (default): the IPv4 address is configured as /32 point-to-point.'));
-		o.default = '0';
-
-		o = s.taboption('advanced', form.Value, 'delay', _('Modem init delay'),
-			_('Seconds to wait before initializing the modem.'));
+		/* Mux channel: this connection's QMAP channel on the modem. 0 = the plain
+		   netdev; N > 0 = wwan0mN. Several interfaces on one modem each pick one. */
+		o = s.taboption('connection', form.Value, 'mux_id', _('Mux channel'),
+			_('QMAP multiplex channel for this connection (0 = no mux). Use different channels for multiple contexts on one modem.'));
 		o.placeholder = '0';
-		o.datatype = 'min(0)';
-		bindModem(o);
+		o.datatype = 'range(0,15)';
 
-		o = s.taboption('advanced', form.Value, 'failreboot', _('Reboot after N failures'),
-			_('Reboot the router after this many failed connection attempts (0 = never).'));
-		o.placeholder = '100';
-		o.datatype = 'uinteger';
-		bindModem(o);
-
-		o = s.taboption('advanced', form.Value, 'zero_rx_timeout', _('Zero-RX timeout'),
-			_('Restart the connection after this many seconds without received packets (0 = off).'));
-		o.placeholder = '21600';
-		o.datatype = 'uinteger';
-		bindModem(o);
-
-		o = s.taboption('advanced', form.Flag, 'location', _('Enable GPS/location'),
-			_('Start the modem GNSS engine and expose position over ubus.'));
-		o.default = '0';
-		bindModem(o);
-
-		o = s.taboption('advanced', form.DynamicList, 'at_init', _('Extra AT init commands'),
-			_('Vendor AT commands sent once after the modem is detected, before registration.'));
-		o.placeholder = 'ATE0';
-		bindModem(o);
-
-		/* ---- wwand-specific advanced options (stored on the wwand_modem) ---- */
-		o = s.taboption('advanced', form.Value, 'sim_slot', _('SIM slot'),
-			_('Physical SIM slot to activate on multi-slot / eSIM modems (0 = leave as-is).'));
-		o.placeholder = '0';
-		o.datatype = 'uinteger';
-		bindModem(o);
-
-		o = s.taboption('advanced', form.ListValue, 'mux', _('Data multiplexing'),
-			_('Kernel datapath backend for QMAP multiplexing. Leave on auto unless a modem misbehaves.'));
-		o.default = 'auto';
-		o.value('auto', _('Automatic'));
-		o.value('rmnet', 'rmnet');
-		o.value('qmimux', 'qmimux');
-		bindModem(o);
-
-		o = s.taboption('advanced', form.Value, 'dl_datagram_max_size', _('Aggregation DL datagram size'),
-			_('Max downlink QMAP aggregation datagram in bytes (0 = board/model default).'));
-		o.placeholder = '0';
-		o.datatype = 'uinteger';
-		bindModem(o);
-
-		o = s.taboption('advanced', form.Value, 'profile', _('Attach profile index'),
+		o = s.taboption('connection', form.Value, 'profile', _('Attach profile index'),
 			_('3GPP profile (CID) used for the LTE attach and default bearer (default derived from mux id / 1).'));
 		o.placeholder = '1';
 		o.datatype = 'uinteger';
 
-		o = s.taboption('advanced', form.Value, 'path', _('USB path binding'),
-			_('Optional: bind the modem at a fixed USB topology path (stable across renumbering on multi-modem setups), like a wifi-device `path`. Leave empty to bind by the modem device above.'));
-		o.ucioption = 'path';
-		bindModem(o);
+		o = s.taboption('connection', form.Value, 'mtu', _('Override MTU'),
+			_('Force a fixed MTU on the WAN link instead of the modem/network value.'));
+		o.placeholder = dev ? (dev.getMTU() || 1500) : 1500;
+		o.datatype = 'max(9200)';
 
-		/* Modem RESET GPIO — an editable dropdown of the named GPIO lines the
-		   kernel exposes. When set, recovery pulses it instead of power-cycling.
-		   If the board already ships a default reset line, hint at it. */
-		o = s.taboption('advanced', form.Value, 'reset_gpio', _('Modem reset GPIO'),
-			_('Named GPIO wired to the modem RESET line. When set, recovery resets the modem through it (invert, wait 30 s, restore) instead of cycling USB power.'));
-		o.ucioption = 'reset_gpio';
-		bindModem(o);
-		o.load = function(section_id) {
-			var self = this;
-			return Promise.all([
-				L.resolveDefault(callGpioList('/sys/class/gpio/'), []),
-				L.resolveDefault(callStatus(), {})
-			]).then(function(res) {
-				(res[0] || []).forEach(function(n) { self.value(n, n); });
-				var brg = (res[1] || {}).board && res[1].board.reset_gpio;
-				if (brg)
-					self.description = _('Named GPIO wired to the modem RESET line (invert, wait 30 s, restore instead of a USB power-cycle). This board already provides a default reset GPIO "%s" — set this only to override it.').format(brg);
-				return self.cfgvalue(section_id);
-			});
-		};
+		o = s.taboption('connection', form.Flag, 'use_pushed_mtu', _('Use modem-pushed MTU'),
+			_('Apply the MTU the network advertises for the bearer (default on).'));
+		o.default = '1';
 
-		/* manual repower/reset button (needs a board power or reset GPIO) */
-		o = s.taboption('advanced', form.Button, '_repower', _('Reset modem'),
-			_('Power-cycle (or, if a reset GPIO is configured, reset) the modem now. Useful to recover a modem that hung or dropped off USB.'));
-		o.inputtitle = _('Repower modem');
-		o.inputstyle = 'remove';
-		o.onclick = function() {
-			return callRepower('').then(function(res) {
-				if (res && res.ok)
-					ui.addNotification(null, E('p', {}, _('Modem repower triggered (%s).').format(res.action)), 'info');
-				else
-					ui.addNotification(null, E('p', {}, _('Repower unavailable: %s.').format((res && res.error) || _('no board power/reset control'))), 'warning');
-			});
-		};
+		o = s.taboption('connection', form.Flag, 'use_pushed_prefix', _('Use network-pushed IPv4 prefix'),
+			_('Off (default): the IPv4 address is configured as /32 point-to-point.'));
+		o.default = '0';
 
-		o = s.taboption('advanced', form.Value, 'tty', _('AT control TTY'),
-			_('Override the auto-detected AT serial port (e.g. /dev/ttyUSB2).'));
-		bindModem(o);
-
-		o = s.taboption('advanced', form.Value, 'stats_interval', _('Telemetry interval'),
-			_('Seconds between throughput/signal telemetry samples while connected.'));
-		o.placeholder = '60';
-		o.datatype = 'uinteger';
-		bindModem(o);
-
-		o = s.taboption('advanced', form.Value, 'settings_poll', _('Settings poll interval'),
+		o = s.taboption('connection', form.Value, 'settings_poll', _('Settings poll interval'),
 			_('Seconds between re-checks of network-pushed IP/DNS/MTU settings (0 = off).'));
 		o.placeholder = '300';
 		o.datatype = 'uinteger';
 
-		o = s.taboption('advanced', form.Flag, 'defaultroute', _('Use default gateway'),
+		o = s.taboption('connection', form.Flag, 'defaultroute', _('Use default gateway'),
 			_('If unchecked, no default route is configured.'));
 		o.default = o.enabled;
 
-		o = s.taboption('advanced', form.Value, 'metric', _('Use gateway metric'));
+		o = s.taboption('connection', form.Value, 'metric', _('Use gateway metric'));
 		o.placeholder = '0';
 		o.datatype = 'uinteger';
 		o.depends('defaultroute', '1');
 
-		o = s.taboption('advanced', form.Flag, 'peerdns', _('Use DNS servers advertised by peer'));
+		o = s.taboption('connection', form.Flag, 'peerdns', _('Use DNS servers advertised by peer'));
 		o.default = o.enabled;
 
-		/* ---- cell lock (with live cell environment) ---- */
-		/* Forward-declared so the cell-scan buttons (rendered first, clicked
-		   later) can reach the lock widgets by the time the user clicks. */
-		var lock4gOpt, lock5gOpt;
+		/* ---- Modem & SIM · Radio & Cell · Resilience (shared, edit the modem) ---- */
+		modemopts.addModemSim(s, 'modem', bindModem);
+
+		modemopts.addRadio(s, 'radio', bindModem);
+
+		/* cell lock + the live cell-environment scanner (its buttons push into the
+		   lock widgets); scanner above the lock inputs in the same tab. */
+		var locks = {};
 		var addToLock = function(kind, value, section_id, btn) {
-			var opt = (kind == '5g') ? lock5gOpt : lock4gOpt;
+			var opt = (kind == '5g') ? locks.lock5g : locks.lock4g;
 			var el = opt && opt.getUIElement(section_id);
 			if (!el) return;
 
@@ -671,7 +550,6 @@ var wwandProtocol = {
 				}
 			}
 
-			/* brief visual confirmation on the clicked button */
 			if (btn) {
 				var prev = btn.textContent;
 				btn.textContent = '✓';
@@ -683,24 +561,17 @@ var wwandProtocol = {
 			}
 		};
 
-		o = liveField(s, 'celllock', '_cellscan', _('Current cells'), renderCellScan, addToLock);
+		o = liveField(s, 'radio', '_cellscan', _('Current cells'), renderCellScan, addToLock);
 		o._netdev = netdev;
 
-		lock4gOpt = s.taboption('celllock', form.DynamicList, 'lock_4g', _('LTE cell lock'),
-			_('Lock to LTE cells, one entry "earfcn:pci" each (several entries = cell list). Use the "Lock" buttons above to add the current or a neighbour cell.'));
-		lock4gOpt.placeholder = '1300:246';
-		bindModem(lock4gOpt);
+		locks = modemopts.addCellLock(s, 'radio', bindModem);
 
-		lock5gOpt = s.taboption('celllock', form.Value, 'lock_5g', _('5G NR SA cell lock'),
-			_('Lock to a 5G SA cell: "pci:arfcn:scs:band". Use the "Lock this 5G cell" button above to prefill it from the current cell.'));
-		lock5gOpt.placeholder = '242:431070:15:1';
-		bindModem(lock5gOpt);
-		o = lock5gOpt;
+		modemopts.addResilience(s, 'resilience', bindModem);
 
-		o = s.taboption('celllock', form.Flag, 'lock_persist', _('Persist lock in modem'),
-			_('Store the cell lock in modem non-volatile memory.'));
-		o.default = '0';
-		bindModem(o);
+		/* per-ICCID SIM overrides (PIN/APN), embedded in the interface's Map like
+		   WireGuard's peers — the same list that Network → Modems shows. */
+		if (s.map)
+			simlist.addSimList(s.map, {});
 	}
 };
 

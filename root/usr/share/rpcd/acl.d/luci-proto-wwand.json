@@ -3,7 +3,10 @@
 		"description": "Grant LuCI read access to the wwand modem daemon",
 		"read": {
 			"ubus": {
-				"wwand": [ "status", "modem_signal", "modem_cells", "context_status" ]
+				"wwand": [ "status", "modem_signal", "modem_cells", "context_status", "modem_sim_slots" ]
+			},
+			"file": {
+				"/sys/class/gpio/": [ "list" ]
 			}
 		},
 		"write": {
