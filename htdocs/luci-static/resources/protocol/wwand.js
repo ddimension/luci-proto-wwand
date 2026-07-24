@@ -703,16 +703,12 @@ var wwandProtocol = {
 	}
 };
 
-/* `wwand` is the current proto name; `qmi` is the historical alias the netifd
-   shim still registers (via `add_protocol qmi`), so interfaces saved that way —
-   and stock mbim/ncm configs migrated in place — keep rendering and coming up
-   with this exact handler during the migration window. Both show up in the
-   "Add interface" picker (it enumerates netifd's proto handlers); the legacy
-   entry is labelled so nobody picks it for a NEW interface. New interfaces and
-   every save use `proto wwand`. */
-network.registerProtocol('qmi', Object.assign({}, wwandProtocol, {
-	getI18n: function() {
-		return _('Cellular / 5G (wwand — legacy "qmi")');
-	}
-}));
-return network.registerProtocol('wwand', wwandProtocol);
+/* `wwand` is the current proto name; the historical `qmi` alias is registered by
+   the sibling protocol/qmi.js, which shares this exact descriptor (exposed below
+   as WwandProto.descriptor). Each file registers its OWN protocol name and
+   returns that registration — a LuCI protocol module must return a valid
+   constructor for the name it is loaded as, so qmi.js cannot just return this
+   class. New interfaces and every save use `proto wwand`. */
+var WwandProto = network.registerProtocol('wwand', wwandProtocol);
+WwandProto.descriptor = wwandProtocol;
+return WwandProto;
