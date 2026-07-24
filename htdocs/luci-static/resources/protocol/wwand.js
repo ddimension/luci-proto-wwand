@@ -127,6 +127,14 @@ var callRepower = rpc.declare({
 	expect: {}
 });
 
+/* manual PIN release past the low-retry safety block */
+var callPinVerify = rpc.declare({
+	object: 'wwand',
+	method: 'modem_sim_pin_verify',
+	params: [ 'modem', 'pin' ],
+	expect: {}
+});
+
 /* Band/frequency helpers live in the shared wwand.bands module (single
    source of truth across the proto handler and the status page). */
 var lteEarfcn = function(earfcn) { return bands.lteEarfcn(earfcn); };
@@ -210,7 +218,36 @@ function renderStatus(netdev) {
 					lc.earfcn, lc.serving_cell_id, lc.tac) ]);
 			}
 
-			return tbl(rows);
+			var out = [ tbl(rows) ];
+
+			/* PIN-safety manual release: with <=1 verify attempt left the daemon
+			   refuses to auto-enter the PIN (avoids a PUK lock); offer the admin an
+			   explicit "enter now" that accepts the last-attempt risk. */
+			var sb = modem.sim_block;
+			if (sb && (sb.reason == 'pin_retries_low' || sb.reason == 'retries_exhausted')) {
+				var exhausted = (sb.reason == 'retries_exhausted');
+				var pinIn = E('input', { 'type': 'text', 'class': 'cbi-input-text',
+					'style': 'width:7em', 'placeholder': _('PIN'), 'disabled': exhausted ? '' : null });
+				var btn = E('button', { 'class': 'btn cbi-button cbi-button-negative',
+					'disabled': exhausted ? '' : null,
+					'click': ui.createHandlerFn(null, function() {
+						return callPinVerify(name, (pinIn.value || '').trim()).then(function() {
+							ui.addNotification(null, E('p', {}, _('PIN entry attempted — watch the modem state above.')), 'info');
+						});
+					}) }, _('Enter PIN now'));
+
+				out.push(E('div', { 'style': 'margin-top:8px;padding:8px;border:1px solid #d9534f;border-radius:4px' }, [
+					E('strong', { 'style': 'color:#d9534f' }, exhausted
+						? _('SIM PIN blocked — 0 attempts left, PUK required.')
+						: _('SIM PIN entry paused — %d attempt(s) left.').format(sb.retries != null ? sb.retries : 1)),
+					E('p', { 'style': 'margin:6px 0' }, exhausted
+						? _('Auto-entry is disabled to avoid a PUK lock. Unblock the SIM with its PUK (e.g. with another device), then reinsert.')
+						: _('wwand does not auto-enter the PIN, to avoid burning the last attempt. Enter it manually to release — this uses one of the remaining attempts, so make sure it is correct.')),
+					exhausted ? '' : E('div', {}, [ pinIn, ' ', btn ])
+				]));
+			}
+
+			return E('div', {}, out);
 		});
 	}).catch(function() { return E('em', {}, _('status unavailable')); });
 }
