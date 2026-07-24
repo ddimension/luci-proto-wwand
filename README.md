@@ -2,9 +2,10 @@
 
 LuCI network-manager integration for the [wwand](../wwand) modem daemon.
 
-It provides the JavaScript protocol handler for `proto 'qmi'` interfaces
-(Network → Interfaces), using the current LuCI protocol API and talking to
-the `wwand` ubus object directly for live data.
+It provides the JavaScript protocol handler for `proto 'wwand'` interfaces
+(Network → Interfaces) — plus the historical `proto 'qmi'` alias for backward
+compatibility — using the current LuCI protocol API and talking to the `wwand`
+ubus object directly for live data.
 
 ## Features
 
@@ -25,9 +26,11 @@ Bandwidth is shown when the daemon reports it (`bandwidth` field on a cell).
 
 ## Installation
 
-Registers protocol `qmi`, replacing the stock `luci-proto-qmi` — both install
-`…/resources/protocol/qmi.js`, so only one can be installed. Remove
-`luci-proto-qmi` first. Depends on `wwand`.
+Ships two protocol files: `…/resources/protocol/wwand.js` (the full handler,
+registering both `wwand` and the legacy `qmi` name) and a thin
+`…/resources/protocol/qmi.js` alias. Because it also installs `protocol/qmi.js`
+it **replaces the stock `luci-proto-qmi`** — only one can be installed, so
+remove `luci-proto-qmi` first. Depends on `wwand`.
 
 The ACL `root/usr/share/rpcd/acl.d/luci-proto-wwand.json` grants the LuCI
 session read access to the `wwand` ubus object (status/modem_signal/
