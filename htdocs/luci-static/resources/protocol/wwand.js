@@ -605,10 +605,13 @@ var wwandProtocol = {
 
 		modemopts.addResilience(s, 'resilience', bindModem);
 
-		/* per-ICCID SIM overrides (PIN/APN), embedded in the interface's Map like
-		   WireGuard's peers — the same list that Network → Modems shows. */
-		if (s.map)
-			simlist.addSimList(s.map, {});
+		/* Per-ICCID SIM overrides (PIN/APN) can't be embedded as a section list in
+		   the interface config modal (it is not a full form.Map), so they live on
+		   the dedicated Network → Modems page (the shared wwand.simlist section);
+		   a note points there. */
+		o = s.taboption('modem', form.DummyValue, '_sims_hint', _('SIM overrides'));
+		o.rawhtml = true;
+		o.default = _('Per-card PIN/APN overrides (matched by ICCID) are managed on <a href="%s">Network → Modems</a>.').format(L.url('admin/network/wwand-modems'));
 	}
 };
 
