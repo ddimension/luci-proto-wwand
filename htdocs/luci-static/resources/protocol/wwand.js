@@ -548,8 +548,9 @@ var wwandProtocol = {
 		o.placeholder = '1';
 		o.datatype = 'uinteger';
 
-		o = s.taboption('advanced', form.Value, 'usb_path', _('USB path binding'),
-			_('Bind the modem at a fixed USB topology path (stable across renumbering on multi-modem setups).'));
+		o = s.taboption('advanced', form.Value, 'path', _('USB path binding'),
+			_('Optional: bind the modem at a fixed USB topology path (stable across renumbering on multi-modem setups), like a wifi-device `path`. Leave empty to bind by the modem device above.'));
+		o.ucioption = 'path';
 		bindModem(o);
 
 		o = s.taboption('advanced', form.Value, 'tty', _('AT control TTY'),
