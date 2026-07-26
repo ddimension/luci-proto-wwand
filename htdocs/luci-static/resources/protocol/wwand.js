@@ -48,7 +48,10 @@ function bindModem(o) {
 		var opt = this.ucioption || this.option;
 		var msid = ensureModemSid(sid);
 		uci.set('network', msid, opt, val);
-		if (msid != sid)
+		/* `device` on the interface is the daemon-managed L3 device handle (the
+		   mux child / netdev the daemon writes back), NOT a legacy inline modem
+		   netdev — never clear it here. Other modem options still migrate. */
+		if (msid != sid && opt != 'device')
 			uci.unset('network', sid, opt);
 	};
 	o.remove = function(sid) {
@@ -56,7 +59,8 @@ function bindModem(o) {
 		var msid = modemSid(sid);
 		if (msid)
 			uci.unset('network', msid, opt);
-		uci.unset('network', sid, opt);
+		if (opt != 'device')
+			uci.unset('network', sid, opt);
 	};
 	return o;
 }
@@ -476,6 +480,19 @@ var wwandProtocol = {
 				return form.Value.prototype.load.apply(this, [section_id]);
 			}, this));
 		};
+
+		/* L3 device (interface-owned) — the resolved network device this
+		   connection uses: the QMAP mux child (wwan0m1) or the plain netdev
+		   (wwan0 / NCM). The daemon writes the resolved name back here on
+		   registration; leaving it empty keeps that auto-fill, setting it overrides
+		   (the user has the final say). This is the name to reference in a VRF
+		   `list ports` or a firewall `option device`. Stored as `device` on the
+		   interface section (NOT the modem's netdev, which is the Modem field). */
+		o = s.taboption('general', form.Value, '_l3_device', _('L3 device'),
+			_('Network device for this connection: the mux child (e.g. wwan0m1) or the plain netdev (wwan0 / NCM). Leave empty — the daemon fills in the resolved name; set it to override. Reference this name in a VRF port or firewall device.'));
+		o.ucioption = 'device';
+		o.rmempty = true;
+		o.placeholder = 'wwan0m1';
 
 		/* ---- Connection (interface-owned) ---- */
 		o = s.taboption('connection', form.Value, 'apn', _('APN'),
