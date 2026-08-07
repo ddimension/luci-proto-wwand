@@ -99,15 +99,14 @@ function renderStatus(netdev, onAdd, section_id) {
 			var opLine = fmt.fmtOperator(reg);
 			if (opLine)
 				rows.push([ _('Operator'), opLine ]);
-			rows.push([ _('Registration'),
-				(reg.registration == 1) ? _('registered') : _('searching') ]);
+			rows.push([ _('Registration'), fmt.regShort(reg) ]);
 
 			var lte = sig.lte;
-			if (lte && lte.rsrp != null && lte.rsrp > -32768)
+			if (lte && fmt.hasSignal(lte.rsrp))
 				rows.push([ _('LTE signal'), 'RSRP %d dBm · RSRQ %d dB · SNR %s dB · RSSI %d dBm'.format(
 					lte.rsrp, lte.rsrq, (lte.snr/10).toFixed(1), lte.rssi) ]);
 			var nr = sig.nr5g;
-			if (nr && nr.rsrp != null && nr.rsrp > -32768)
+			if (nr && fmt.hasSignal(nr.rsrp))
 				rows.push([ _('5G signal'), 'RSRP %d dBm · SNR %s dB'.format(
 					nr.rsrp, (nr.snr/10).toFixed(1)) ]);
 
@@ -115,7 +114,7 @@ function renderStatus(netdev, onAdd, section_id) {
 			if (lc) {
 				var ef = bands.lteEarfcn(lc.earfcn);
 				rows.push([ _('Serving cell'), 'LTE %s%s · EARFCN %d · PCI %d · TAC %d'.format(
-					ef ? ef.band : '?', ef ? ' (%s MHz)'.format(ef.mhz.toFixed(1)) : '',
+					ef ? ef.band : '?', ef ? ' (%s)'.format(fmt.mhz(ef.mhz)) : '',
 					lc.earfcn, lc.serving_cell_id, lc.tac) ]);
 			}
 
@@ -176,7 +175,13 @@ function lockBtn(onAdd, section_id, kind, value, label) {
    button that appends its lock value to the corresponding form field. */
 function renderCellScan(netdev, onAdd, section_id) {
 	return L.resolveDefault(callStatus(), {}).then(function(modems) {
-		var name = pickModem(modems, netdev);
+		/* the interface's `option modem` reference is authoritative (same fix
+		   as renderStatus): the netdev-prefix heuristic can pick the WRONG
+		   modem after a reboot swaps kernel netdev names — and a cell lock
+		   applied to the wrong modem is much worse than a wrong status page */
+		var name = (section_id && modems) ? modemSid(section_id) : null;
+		if (!name || !modems[name])
+			name = pickModem(modems, netdev);
 		if (!name)
 			return E('em', {}, _('no modem'));
 
@@ -187,8 +192,8 @@ function renderCellScan(netdev, onAdd, section_id) {
 			var sig = res[0] || {}, cells = (res[1] || {}).cells || {};
 			var out = [];
 			var lc = cells.lte_intra;
-			var fmt = function(x, unit) { return (x == null) ? '—' : x + (unit || ''); };
-			var mhz = function(f) { return (f == null) ? '—' : f.mhz.toFixed(1) + ' MHz'; };
+			var val = function(x) { return (x == null) ? '—' : x; };
+			var mhz = function(f) { return val(f && fmt.mhz(f.mhz)); };
 
 			if (lc) {
 				var ef = bands.lteEarfcn(lc.earfcn);
@@ -201,15 +206,15 @@ function renderCellScan(netdev, onAdd, section_id) {
 					[ _('Technology'), 'LTE' ],
 					[ _('Band'), ef ? ef.band : '—' ],
 					[ _('Frequency'), mhz(ef) ],
-					[ _('Bandwidth'), fmt(lc.bandwidth != null ? (lc.bandwidth/1000 + ' MHz') : null) ],
+					[ _('Bandwidth'), val(fmt.mhz(lc.bandwidth != null ? lc.bandwidth/1000 : null)) ],
 					[ _('EARFCN'), '' + lc.earfcn ],
 					[ _('PCI'), E('span', {}, [
 						'%d  →  '.format(lc.serving_cell_id), E('code', {}, srvLock),
 						lockBtn(onAdd, section_id, '4g', srvLock, _('Lock this cell')) ]) ],
 					[ _('Signal'), 'RSRP %s · RSRQ %s · SNR %s · RSSI %s'.format(
-						srv ? (srv.rsrp/10).toFixed(1) + ' dBm' : (sig.lte ? sig.lte.rsrp + ' dBm' : '—'),
-						srv ? (srv.rsrq/10).toFixed(1) + ' dB' : (sig.lte ? sig.lte.rsrq + ' dB' : '—'),
-						sig.lte ? (sig.lte.snr/10).toFixed(1) + ' dB' : '—',
+						srv ? fmt.dBm(srv.rsrp) : (sig.lte ? sig.lte.rsrp + ' dBm' : '—'),
+						srv ? fmt.dB(srv.rsrq) : (sig.lte ? sig.lte.rsrq + ' dB' : '—'),
+						sig.lte ? fmt.dB(sig.lte.snr) : '—',
 						sig.lte ? sig.lte.rssi + ' dBm' : '—') ]
 				]));
 
@@ -228,8 +233,8 @@ function renderCellScan(netdev, onAdd, section_id) {
 						var v = '%d:%d'.format(lc.earfcn, c.pci);
 						return E('tr', { 'class': 'tr' }, [
 							E('td', { 'class': 'td' }, '' + c.pci),
-							E('td', { 'class': 'td' }, '%s dBm'.format((c.rsrp/10).toFixed(1))),
-							E('td', { 'class': 'td' }, '%s dB'.format((c.rsrq/10).toFixed(1))),
+							E('td', { 'class': 'td' }, fmt.dBm(c.rsrp)),
+							E('td', { 'class': 'td' }, fmt.dB(c.rsrq)),
 							E('td', { 'class': 'td' }, E('code', {}, v)),
 							E('td', { 'class': 'td' }, lockBtn(onAdd, section_id, '4g', v))
 						]);
@@ -252,14 +257,14 @@ function renderCellScan(netdev, onAdd, section_id) {
 					[ _('Technology'), '5G NR' ],
 					[ _('Band'), nf && nf.band ? nf.band : '—' ],
 					[ _('Frequency'), mhz(nf) ],
-					[ _('Bandwidth'), fmt(nc.bandwidth != null ? (nc.bandwidth/1000 + ' MHz') : null) ],
+					[ _('Bandwidth'), val(fmt.mhz(nc.bandwidth != null ? nc.bandwidth/1000 : null)) ],
 					[ _('ARFCN'), '' + (cells.nr5g_arfcn || '?') ],
 					[ _('PCI'), E('span', {}, [
 						'' + nc.pci,
 						nrLock ? E('span', {}, [ '   →  ', E('code', {}, nrLock),
 							lockBtn(onAdd, section_id, '5g', nrLock, _('Lock this 5G cell')) ]) : '' ]) ],
-					[ _('Signal'), 'RSRP %s dBm · RSRQ %s dB · SNR %s dB'.format(
-						(nc.rsrp/10).toFixed(1), (nc.rsrq/10).toFixed(1), (nc.snr/10).toFixed(1)) ]
+					[ _('Signal'), 'RSRP %s · RSRQ %s · SNR %s'.format(
+						fmt.dBm(nc.rsrp), fmt.dB(nc.rsrq), fmt.dB(nc.snr)) ]
 				]));
 				if (onAdd && nrLock)
 					out.push(E('p', { 'style': 'color:#666;font-size:90%' },
