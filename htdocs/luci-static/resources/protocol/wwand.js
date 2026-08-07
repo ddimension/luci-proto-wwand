@@ -96,11 +96,9 @@ function renderStatus(netdev, onAdd, section_id) {
 			if (modem.control_note)
 				rows.push([ _('Note'), E('span', { 'style': 'color:#b8860b' }, modem.control_note) ]);
 
-			var plmn = reg.plmn;
-			if (plmn)
-				rows.push([ _('Operator'), '%s (%s/%s)%s'.format(
-					(plmn.description || '').trim(), plmn.mcc, plmn.mnc,
-					reg.roaming ? ' — ' + _('roaming') : '') ]);
+			var opLine = fmt.fmtOperator(reg);
+			if (opLine)
+				rows.push([ _('Operator'), opLine ]);
 			rows.push([ _('Registration'),
 				(reg.registration == 1) ? _('registered') : _('searching') ]);
 
