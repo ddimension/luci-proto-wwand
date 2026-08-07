@@ -88,21 +88,6 @@ var callCells = rpc.declare({
 	expect: { }
 });
 
-/* Fallback enumeration of control devices, like the stock qmi/ncm handlers */
-var callFileList = rpc.declare({
-	object: 'file',
-	method: 'list',
-	params: [ 'path' ],
-	expect: { entries: [] },
-	filter: function(list, params) {
-		var rv = [];
-		for (var i = 0; i < list.length; i++)
-			if (list[i].name.match(/^cdc-wdm/))
-				rv.push(params.path + list[i].name);
-		return rv.sort();
-	}
-});
-
 /* All *named* GPIO lines (from the DT gpio-line-names), for the reset/power
    GPIO picker. Skips the export/unexport control files and the raw
    gpiochipN/gpioNNN entries. */
@@ -173,9 +158,17 @@ function tbl(rows) {
 }
 
 /* Compact modem/registration/signal summary for the general tab. */
-function renderStatus(netdev) {
+function renderStatus(netdev, onAdd, section_id) {
 	return L.resolveDefault(callStatus(), {}).then(function(modems) {
-		var name = pickModem(modems, netdev);
+		/* the interface's `option modem` reference is authoritative — the
+		   netdev-prefix heuristic below can pick the WRONG modem after a
+		   reboot swaps kernel netdev names (another modem may now own
+		   'wwan0' while this connection's mux child is still 'wwan0m1');
+		   the heuristic remains only for legacy inline configs */
+		var name = (section_id && modems) ? modemSid(section_id) : null;
+
+		if (!name || !modems[name])
+			name = pickModem(modems, netdev);
 		if (!name)
 			return E('em', {}, _('wwand daemon not running or no modem present'));
 
@@ -459,25 +452,27 @@ var wwandProtocol = {
 		o = liveField(s, 'general', '_status', _('Modem status'), renderStatus);
 		o._netdev = netdev;
 
-		o = s.taboption('general', form.Value, '_modem_device', _('Modem'),
-			_('The modem this connection runs on — its network device (e.g. wwan0) or /dev/cdc-wdmX. Several connections can share one modem via different mux channels; its hardware / SIM / radio settings are on the tabs below (or manage them on Network → Modems).'));
-		o.ucioption = 'device';
+		/* the modem REFERENCE (`option modem 'wwmodem0'` on the interface) —
+		   not a device name: netdev/cdc-wdm names follow USB enumeration
+		   order and can swap on reboot. The hardware binding (path/device/
+		   serial) lives in the referenced wwand_modem section. */
+		o = s.taboption('general', form.ListValue, 'modem', _('Modem'),
+			_('The configured modem this connection runs on (its wwand_modem section, e.g. wwmodem0). Several connections can share one modem via different mux channels; the hardware binding and SIM/radio settings live on the tabs below or on Network → Modems.'));
 		o.rmempty = false;
-		bindModem(o);
 		o.load = function(section_id) {
-			return Promise.all([
-				L.resolveDefault(callStatus(), {}),
-				L.resolveDefault(callFileList('/dev/'), [])
-			]).then(L.bind(function(res) {
-				var modems = res[0] || {}, ctrls = res[1] || [];
-				Object.keys(modems).forEach(L.bind(function(n) {
-					var m = modems[n];
-					if (m.netdev)
-						this.value(m.netdev, '%s (%s%s)'.format(m.netdev,
-							m.model || '?', m.imei ? ' / ' + m.imei : ''));
-				}, this));
-				ctrls.forEach(L.bind(function(d) { this.value(d); }, this));
-				return form.Value.prototype.load.apply(this, [section_id]);
+			return L.resolveDefault(callStatus(), {}).then(L.bind(function(modems) {
+				var opt = this, listed = 0;
+				uci.sections('network', 'wwand_modem').forEach(function(ms) {
+					var n = ms['.name'];
+					var m = (modems || {})[n];
+					var extra = m ? [ m.model, m.netdev ].filter(Boolean).join(' · ')
+					              : (ms.path || ms.device || '');
+					opt.value(n, extra ? '%s (%s)'.format(n, extra) : n);
+					listed++;
+				});
+				if (!listed)
+					opt.value('', _('(no modem configured — add one on Network → Modems)'));
+				return form.ListValue.prototype.load.apply(this, [section_id]);
 			}, this));
 		};
 
