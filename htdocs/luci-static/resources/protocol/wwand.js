@@ -126,8 +126,8 @@ var callPinVerify = rpc.declare({
 
 /* Band/frequency helpers live in the shared wwand.bands module (single
    source of truth across the proto handler and the status page). */
-var lteEarfcn = function(earfcn) { return bands.lteEarfcn(earfcn); };
-var nrArfcn = function(arfcn) { return bands.nrArfcn(arfcn); };
+
+
 
 /* Find the wwand modem that owns a given l3 interface device: the modem's
    netdev (wwan0) is a prefix of the interface device (wwan0m1). */
@@ -209,7 +209,7 @@ function renderStatus(netdev, onAdd, section_id) {
 
 			var lc = cells.lte_intra;
 			if (lc) {
-				var ef = lteEarfcn(lc.earfcn);
+				var ef = bands.lteEarfcn(lc.earfcn);
 				rows.push([ _('Serving cell'), 'LTE %s%s · EARFCN %d · PCI %d · TAC %d'.format(
 					ef ? ef.band : '?', ef ? ' (%s MHz)'.format(ef.mhz.toFixed(1)) : '',
 					lc.earfcn, lc.serving_cell_id, lc.tac) ]);
@@ -287,7 +287,7 @@ function renderCellScan(netdev, onAdd, section_id) {
 			var mhz = function(f) { return (f == null) ? '—' : f.mhz.toFixed(1) + ' MHz'; };
 
 			if (lc) {
-				var ef = lteEarfcn(lc.earfcn);
+				var ef = bands.lteEarfcn(lc.earfcn);
 				var srv = null;
 				(lc.cells || []).forEach(function(c) { if (c.pci == lc.serving_cell_id) srv = c; });
 				var srvLock = '%d:%d'.format(lc.earfcn, lc.serving_cell_id);
@@ -335,7 +335,7 @@ function renderCellScan(netdev, onAdd, section_id) {
 
 			var nc = cells.nr5g_cell;
 			if (nc) {
-				var nf = nrArfcn(cells.nr5g_arfcn);
+				var nf = bands.nrArfcn(cells.nr5g_arfcn);
 				/* lock_5g format: pci:arfcn:scs:band. QMI gives pci + arfcn;
 				   band is inferred from the ARFCN, scs defaults to 1 (30 kHz,
 				   the usual FR1 spacing) — the user should verify both. */
