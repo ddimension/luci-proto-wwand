@@ -1,5 +1,4 @@
 'use strict';
-'require rpc';
 'require dom';
 'require ui';
 'require uci';
@@ -8,121 +7,31 @@
 'require wwand.bands as bands';
 'require wwand.modemopts as modemopts';
 'require wwand.simlist as simlist';
+'require wwand.rpc as wrpc';
+'require wwand.format as fmt';
+'require wwand.modemsid as modemsid';
 
 /* Network-native model: radio/SIM/hardware options live on a `config wwand_modem`
    section in /etc/config/network, referenced from the interface via `option
    modem`; the interface itself carries only the connection (apn/auth/pdp/mux).
-   The helpers below let the proto form (which binds to the interface section)
-   transparently store the modem options in the wwand_modem section, creating it
-   + `option modem` on first save, and reading a legacy inline value when no
-   wwand_modem exists yet — so saving ALWAYS converts an old config to new-style. */
-function modemSid(ifaceSid) {
-	var ref = uci.get('network', ifaceSid, 'modem');
-	if (ref && uci.get('network', ref) != null)
-		return ref;
-	return null;
-}
-
-function ensureModemSid(ifaceSid) {
-	var sid = modemSid(ifaceSid);
-	if (sid)
-		return sid;
-	var base = 'wwmodem_' + ifaceSid, name = base, i = 0;
-	while (uci.get('network', name) != null)
-		name = base + (++i);
-	uci.add('network', 'wwand_modem', name);
-	uci.set('network', ifaceSid, 'modem', name);
-	return name;
-}
-
-/* Redirect a form option's storage to the interface's wwand_modem section.
-   Reads new-style (wwand_modem) or, until one exists, legacy inline; writes
-   new-style and clears any legacy inline copy. */
-function bindModem(o) {
-	o.cfgvalue = function(sid) {
-		var opt = this.ucioption || this.option;
-		var msid = modemSid(sid);
-		return uci.get('network', msid || sid, opt);
-	};
-	o.write = function(sid, val) {
-		var opt = this.ucioption || this.option;
-		var msid = ensureModemSid(sid);
-		uci.set('network', msid, opt, val);
-		/* `device` on the interface is the daemon-managed L3 device handle (the
-		   mux child / netdev the daemon writes back), NOT a legacy inline modem
-		   netdev — never clear it here. Other modem options still migrate. */
-		if (msid != sid && opt != 'device')
-			uci.unset('network', sid, opt);
-	};
-	o.remove = function(sid) {
-		var opt = this.ucioption || this.option;
-		var msid = modemSid(sid);
-		if (msid)
-			uci.unset('network', msid, opt);
-		if (opt != 'device')
-			uci.unset('network', sid, opt);
-	};
-	return o;
-}
+   The shared wwand.modemsid helpers let the proto form (which binds to the
+   interface section) transparently store the modem options in the wwand_modem
+   section, creating it + `option modem` on first save, and reading a legacy
+   inline value when no wwand_modem exists yet — so saving ALWAYS converts an
+   old config to new-style. */
+var modemSid = modemsid.modemSid;
+var bindModem = modemsid.bindModem;
 
 /* Talk to the wwand daemon directly over ubus (it exposes the 'wwand'
-   object). Read-only queries only; interface configuration is written to
+   object; declarations live in the shared wwand.rpc module). Read-only
+   queries plus the manual PIN release; interface configuration is written to
    /etc/config/network via the normal uci path. */
-var callStatus = rpc.declare({
-	object: 'wwand',
-	method: 'status',
-	expect: { modems: {} }
-});
-
-var callSignal = rpc.declare({
-	object: 'wwand',
-	method: 'modem_signal',
-	params: [ 'modem' ],
-	expect: { }
-});
-
-var callCells = rpc.declare({
-	object: 'wwand',
-	method: 'modem_cells',
-	params: [ 'modem' ],
-	expect: { }
-});
-
-/* All *named* GPIO lines (from the DT gpio-line-names), for the reset/power
-   GPIO picker. Skips the export/unexport control files and the raw
-   gpiochipN/gpioNNN entries. */
-var callGpioList = rpc.declare({
-	object: 'file',
-	method: 'list',
-	params: [ 'path' ],
-	expect: { entries: [] },
-	filter: function(list) {
-		var rv = [];
-		for (var i = 0; i < list.length; i++) {
-			var n = list[i].name;
-			if (n && n != 'export' && n != 'unexport' && !/^gpio(chip)?[0-9]+$/.test(n))
-				rv.push(n);
-		}
-		return rv.sort();
-	}
-});
-
-/* Manual hardware repower/reset of the modem via the board profile (reset GPIO
-   pulse or USB power-cycle). Same path the recovery ladder uses. */
-var callRepower = rpc.declare({
-	object: 'wwand',
-	method: 'modem_repower',
-	params: [ 'modem' ],
-	expect: {}
-});
+var callStatus = wrpc.status;
+var callSignal = wrpc.signal;
+var callCells = wrpc.cells;
 
 /* manual PIN release past the low-retry safety block */
-var callPinVerify = rpc.declare({
-	object: 'wwand',
-	method: 'modem_sim_pin_verify',
-	params: [ 'modem', 'pin' ],
-	expect: {}
-});
+var callPinVerify = wrpc.pinVerify;
 
 /* Band/frequency helpers live in the shared wwand.bands module (single
    source of truth across the proto handler and the status page). */
@@ -148,13 +57,10 @@ function pickModem(modems, netdev) {
 	return names[0];
 }
 
+/* shared two-column table renderer (wwand.format); this handler uses the
+   33% label column it always had */
 function tbl(rows) {
-	return E('table', { 'class': 'table' }, rows.map(function(r) {
-		return E('tr', { 'class': 'tr' }, [
-			E('td', { 'class': 'td left', 'width': '33%' }, r[0]),
-			E('td', { 'class': 'td left' }, r[1])
-		]);
-	}));
+	return fmt.tbl(rows, 33);
 }
 
 /* Compact modem/registration/signal summary for the general tab. */
