@@ -628,7 +628,7 @@ var wwandProtocol = {
 		   a note points there. */
 		o = s.taboption('modem', form.DummyValue, '_sims_hint', _('SIM overrides'));
 		o.rawhtml = true;
-		o.default = _('Per-card PIN/APN overrides (matched by ICCID) are managed on <a href="%s">Network → Modems</a>.').format(L.url('admin/network/wwand-modems'));
+		o.default = _('Per-card PIN/APN overrides (matched by ICCID or IMSI) are managed on <a href="%s">Network → Modems</a>.').format(L.url('admin/network/wwand'));
 	}
 };
 
