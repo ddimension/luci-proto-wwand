@@ -393,10 +393,10 @@ var wwandProtocol = {
 		   `list ports` or a firewall `option device`. Stored as `device` on the
 		   interface section (NOT the modem's netdev, which is the Modem field). */
 		o = s.taboption('general', form.Value, '_l3_device', _('L3 device'),
-			_('Network device for this connection: the mux child (e.g. wwan0m1) or the plain netdev (wwan0 / NCM). Leave empty — the daemon fills in the resolved name; set it to override. Reference this name in a VRF port or firewall device.'));
+			_('Stable L3 device name for this connection (wwand0…wwand100). Leave empty — the daemon assigns the next free wwandN, renames the kernel netdev (or creates the mux child) accordingly and writes the name back here; set a value to pin it. Reference this name in a VRF port or firewall device match.'));
 		o.ucioption = 'device';
 		o.rmempty = true;
-		o.placeholder = 'wwan0m1';
+		o.placeholder = 'wwand0';
 
 		/* ---- Connection (interface-owned) ---- */
 		o = s.taboption('connection', form.Value, 'apn', _('APN'),
