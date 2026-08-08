@@ -550,12 +550,7 @@ var wwandProtocol = {
 	}
 };
 
-/* `wwand` is the current proto name; the historical `qmi` alias is registered by
-   the sibling protocol/qmi.js, which shares this exact descriptor (exposed below
-   as WwandProto.descriptor). Each file registers its OWN protocol name and
-   returns that registration — a LuCI protocol module must return a valid
-   constructor for the name it is loaded as, so qmi.js cannot just return this
-   class. New interfaces and every save use `proto wwand`. */
-var WwandProto = network.registerProtocol('wwand', wwandProtocol);
-WwandProto.descriptor = wwandProtocol;
-return WwandProto;
+/* `wwand` is the only proto this handler registers. The historical `qmi` alias
+   was dropped (see the Makefile): proto qmi stays with luci-proto-qmi/uqmi, and
+   interfaces are moved to proto wwand via the migration list in the modem page. */
+return network.registerProtocol('wwand', wwandProtocol);
