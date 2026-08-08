@@ -101,6 +101,12 @@ function renderStatus(netdev, onAdd, section_id) {
 				rows.push([ _('Operator'), opLine ]);
 			rows.push([ _('Registration'), fmt.regShort(reg) ]);
 
+			/* SIM identity, when the card is readable (ICCID pre-PIN; IMSI/MSISDN
+			   after unlock) — same trio as the Status page */
+			if (modem.iccid)  rows.push([ _('ICCID'), modem.iccid ]);
+			if (modem.imsi)   rows.push([ _('IMSI'), modem.imsi ]);
+			if (modem.msisdn) rows.push([ _('MSISDN'), modem.msisdn ]);
+
 			var lte = sig.lte;
 			if (lte && fmt.hasSignal(lte.rsrp))
 				rows.push([ _('LTE signal'), 'RSRP %d dBm · RSRQ %d dB · SNR %s dB · RSSI %d dBm'.format(
