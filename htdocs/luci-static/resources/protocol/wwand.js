@@ -296,6 +296,14 @@ function liveField(s, tab, name, title, renderFn, onAdd) {
 		var node = E('div', { 'id': elId }, E('em', {}, _('loading…')));
 		var nd = o._netdev;
 		var refresh = function() {
+			/* the modal was closed → element gone: stop polling (and free the
+			   guard so a later re-open re-registers) instead of leaking a 5s
+			   poller that keeps issuing ubus calls for the page's lifetime */
+			if (!document.getElementById(elId)) {
+				L.Poll.remove(refresh);
+				delete _polled[elId];
+				return Promise.resolve();
+			}
 			return renderFn(nd, onAdd, section_id).then(function(content) {
 				var cur = document.getElementById(elId);
 				if (cur) dom.content(cur, content);
