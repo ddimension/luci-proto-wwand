@@ -1,0 +1,12 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  js-syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: node --check all JS
+        run: |
+          set -e
+          find htdocs -name '*.js' -print0 | xargs -0 -n1 node --check
+          echo "all JS files parse"
