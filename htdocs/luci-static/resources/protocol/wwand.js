@@ -449,7 +449,8 @@ var wwandProtocol = {
 		o.depends('auth', 'chap');
 		o.depends('auth', 'both');
 
-		o = s.taboption('connection', form.Value, 'password', _('PAP/CHAP password'));
+		o = s.taboption('connection', form.Value, 'password', _('PAP/CHAP password'),
+			_('Password for the APN authentication.'));
 		o.depends('auth', 'pap');
 		o.depends('auth', 'chap');
 		o.depends('auth', 'both');
@@ -493,12 +494,14 @@ var wwandProtocol = {
 			_('If unchecked, no default route is configured.'));
 		o.default = o.enabled;
 
-		o = s.taboption('connection', form.Value, 'metric', _('Use gateway metric'));
+		o = s.taboption('connection', form.Value, 'metric', _('Use gateway metric'),
+			_('Routing metric for this interface\'s default route — higher values lose against lower ones when several WANs are up.'));
 		o.placeholder = '0';
 		o.datatype = 'uinteger';
 		o.depends('defaultroute', '1');
 
-		o = s.taboption('connection', form.Flag, 'peerdns', _('Use DNS servers advertised by peer'));
+		o = s.taboption('connection', form.Flag, 'peerdns', _('Use DNS servers advertised by peer'),
+			_('Use the DNS servers the network hands out with the data session. Disable only if you run your own resolvers — without any DNS, hostname-based services (e.g. eSIM downloads) fail.'));
 		o.default = o.enabled;
 
 		/* ---- Modem & SIM · Radio & Cell · Resilience (shared, edit the modem) ---- */
