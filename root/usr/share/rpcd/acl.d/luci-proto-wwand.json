@@ -11,7 +11,7 @@
 		},
 		"write": {
 			"ubus": {
-				"wwand": [ "modem_repower", "modem_sim_pin_verify" ]
+				"wwand": [ "modem_reset", "modem_sim_pin_verify" ]
 			}
 		}
 	}

@@ -488,7 +488,6 @@ var wwandProtocol = {
 
 		o = s.taboption('connection', form.Flag, 'hard_reconnect_on_ip_change', _('Hard reconnect on IP change'),
 			_('On a reconnect that changes the IP, do a link down/up instead of an in-place renew, so dependent tunnels (gre/xfrm/IPsec) re-follow the new address. Costs this WAN a brief blip + IPv6-PD/VRF rebuild. WireGuard does not need it. Default off.'));
-		o.default = '0';
 
 		o = s.taboption('connection', form.Flag, 'defaultroute', _('Use default gateway'),
 			_('If unchecked, no default route is configured.'));
