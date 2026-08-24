@@ -6,7 +6,6 @@
 'require network';
 'require wwand.bands as bands';
 'require wwand.modemopts as modemopts';
-'require wwand.simlist as simlist';
 'require wwand.rpc as wrpc';
 'require wwand.format as fmt';
 'require wwand.modemsid as modemsid';
