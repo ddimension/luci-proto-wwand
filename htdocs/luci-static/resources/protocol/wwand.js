@@ -93,7 +93,10 @@ function renderStatus(netdev, onAdd, section_id) {
 			/* surface a modem we are waiting on (after boot / a modem reboot the
 			   control device may take a while to (re)appear) so the admin sees it */
 			if (modem.control_note)
-				rows.push([ _('Note'), E('span', { 'style': 'color:#b8860b' }, modem.control_note) ]);
+				rows.push([ _('Note'), E('span', { 'style': 'color:#b8860b' },
+					/* array: the note is daemon text, and a bare string would go
+					   in through innerHTML (luci.js:1394-96) */
+					[ modem.control_note ]) ]);
 
 			var opLine = fmt.fmtOperator(reg);
 			if (opLine)
