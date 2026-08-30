@@ -98,6 +98,23 @@ function renderStatus(netdev, onAdd, section_id) {
 					   in through innerHTML (luci.js:1394-96) */
 					[ modem.control_note ]) ]);
 
+			/* the card's own last word — a session it closed and why, an
+			   internal recovery, an activation that failed. Same escaping rule:
+			   daemon text goes in as an array child, never as a bare string. */
+			if (modem.sim_busy)
+				rows.push([ _('SIM card'), E('span', { 'style': 'color:#c00;font-weight:bold' },
+					[ _('busy — reads failing') ]) ]);
+			else if (modem.sim_note)
+				rows.push([ _('SIM card'), E('span', { 'style': 'color:#c00' },
+					[ modem.sim_note ]) ]);
+
+			/* only when the modem is holding the RADIO back — the daemon already
+			   excluded environmental limits from `mitigated`, so a modem that is
+			   merely cold does not raise an alarm in a connection dialog */
+			if (modem.thermal && modem.thermal.mitigated)
+				rows.push([ _('Thermal'), E('span', { 'style': 'color:#c00;font-weight:bold' },
+					[ _('throttling, level %d').format(modem.thermal.level || 0) ]) ]);
+
 			var opLine = fmt.fmtOperator(reg);
 			if (opLine)
 				rows.push([ _('Operator'), opLine ]);
