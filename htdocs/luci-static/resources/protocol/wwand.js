@@ -162,9 +162,9 @@ function renderStatus(netdev, onAdd, section_id) {
 					}) }, _('Enter PIN now'));
 
 				out.push(E('div', { 'style': 'margin-top:8px;padding:8px;border:1px solid #d9534f;border-radius:4px' }, [
-					E('strong', { 'style': 'color:#d9534f' }, exhausted
+					E('strong', { 'style': 'color:#d9534f' }, [ exhausted
 						? _('SIM PIN blocked — 0 attempts left, PUK required.')
-						: _('SIM PIN entry paused — %d attempt(s) left.').format(sb.retries != null ? sb.retries : 1)),
+						: _('SIM PIN entry paused — %d attempt(s) left.').format(sb.retries != null ? sb.retries : 1) ]),
 					E('p', { 'style': 'margin:6px 0' }, exhausted
 						? _('Auto-entry is disabled to avoid a PUK lock. Unblock the SIM with its PUK (e.g. with another device), then reinsert.')
 						: _('wwand does not auto-enter the PIN, to avoid burning the last attempt. Enter it manually to release — this uses one of the remaining attempts, so make sure it is correct.')),
@@ -257,7 +257,7 @@ function renderCellScan(netdev, onAdd, section_id) {
 					].concat(neigh.map(function(c) {
 						var v = '%d:%d'.format(lc.earfcn, c.pci);
 						return E('tr', { 'class': 'tr' }, [
-							E('td', { 'class': 'td' }, '' + c.pci),
+							E('td', { 'class': 'td' }, [ '' + c.pci ]),
 							E('td', { 'class': 'td' }, fmt.dBm(c.rsrp)),
 							E('td', { 'class': 'td' }, fmt.dB(c.rsrq)),
 							E('td', { 'class': 'td' }, E('code', {}, v)),
