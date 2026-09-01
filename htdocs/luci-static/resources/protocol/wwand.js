@@ -441,9 +441,16 @@ var wwandProtocol = {
 		o.value('ipv4v6', _('IPv4 + IPv6'));
 		o.value('ipv4', _('IPv4'));
 		o.value('ipv6', _('IPv6'));
-		/* read a legacy `pdptype` (old proto js), write the canonical pdp_type */
+		/* Read a legacy `pdptype` (old proto js), write the canonical pdp_type —
+		   and fold the case. The stock qmi/mbim protos and the tools people
+		   migrate from write IPV4V6 / IPV4, and this list only carries the
+		   lowercase spellings: an uppercase value matched no choice, so the
+		   widget fell back to the default and saving REWROTE the user's setting
+		   without anyone asking. Field-found on a migrated config (2026-09-01).
+		   The daemon folds the same way, so both sides agree on what is stored. */
 		o.cfgvalue = function(sid) {
-			return uci.get('network', sid, 'pdp_type') || uci.get('network', sid, 'pdptype');
+			var v = uci.get('network', sid, 'pdp_type') || uci.get('network', sid, 'pdptype');
+			return (typeof v == 'string') ? v.toLowerCase() : v;
 		};
 		o.write = function(sid, val) {
 			uci.set('network', sid, 'pdp_type', val);
