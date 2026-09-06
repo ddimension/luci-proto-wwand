@@ -63,15 +63,17 @@ function tbl(rows) {
 }
 
 /* Compact modem/registration/signal summary for the general tab. */
-function renderStatus(netdev, onAdd, section_id) {
+function renderStatus(netdev, onAdd, section_id, liveModem) {
 	return L.resolveDefault(callStatus(), {}).then(function(modems) {
 		/* the interface's `option modem` reference is authoritative — the
 		   netdev-prefix heuristic below can pick the WRONG modem after a
 		   reboot swaps kernel netdev names (another modem may now own
 		   'wwan0' while this connection's mux child is still 'wwan0m1');
 		   the heuristic remains only for legacy inline configs */
-		var name = (section_id && modems) ? modemSid(section_id) : null;
+		var name = (liveModem && modems && modems[liveModem]) ? liveModem : null;
 
+		if (!name)
+			name = (section_id && modems) ? modemSid(section_id) : null;
 		if (!name || !modems[name])
 			name = pickModem(modems, netdev);
 		if (!name)
@@ -198,13 +200,16 @@ function lockBtn(onAdd, section_id, kind, value, label) {
    and the neighbour list with signal, so the user can see which
    EARFCN:PCI / 5G cell to lock to. When onAdd is given, each candidate gets a
    button that appends its lock value to the corresponding form field. */
-function renderCellScan(netdev, onAdd, section_id) {
+function renderCellScan(netdev, onAdd, section_id, liveModem) {
 	return L.resolveDefault(callStatus(), {}).then(function(modems) {
 		/* the interface's `option modem` reference is authoritative (same fix
 		   as renderStatus): the netdev-prefix heuristic can pick the WRONG
 		   modem after a reboot swaps kernel netdev names — and a cell lock
 		   applied to the wrong modem is much worse than a wrong status page */
-		var name = (section_id && modems) ? modemSid(section_id) : null;
+		var name = (liveModem && modems && modems[liveModem]) ? liveModem : null;
+
+		if (!name)
+			name = (section_id && modems) ? modemSid(section_id) : null;
 		if (!name || !modems[name])
 			name = pickModem(modems, netdev);
 		if (!name)
@@ -312,6 +317,23 @@ function liveField(s, tab, name, title, renderFn, onAdd) {
 	var o = s.taboption(tab, form.DummyValue, name, title);
 	o.load = function(section_id) {
 		var elId = 'wwand-%s-%s'.format(name, section_id);
+		/* The modem this panel should describe is whatever the `modem` dropdown
+		   shows RIGHT NOW, not what uci has. On a new interface uci has nothing
+		   yet, and while editing an existing one it still holds the previous
+		   choice until save — in both cases the panel fell through to
+		   pickModem(), which answers with the first READY modem and so always
+		   showed the same one no matter what was selected
+		   (ddimension/luci-proto-wwand#1). Read the form value, and fall back
+		   to the saved binding when the option is not on this page. */
+		var liveModem = function() {
+			try {
+				var r = (o.map && o.map.lookupOption)
+					? o.map.lookupOption('modem', section_id) : null;
+				var v = (r && r[0]) ? r[0].formvalue(r[1] || section_id) : null;
+				return (v != null && v !== '') ? v : null;
+			}
+			catch (e) { return null; }
+		};
 		var node = E('div', { 'id': elId }, E('em', {}, _('loading…')));
 		var nd = o._netdev;
 		var refresh = function() {
@@ -323,7 +345,7 @@ function liveField(s, tab, name, title, renderFn, onAdd) {
 				delete _polled[elId];
 				return Promise.resolve();
 			}
-			return renderFn(nd, onAdd, section_id).then(function(content) {
+			return renderFn(nd, onAdd, section_id, liveModem()).then(function(content) {
 				var cur = document.getElementById(elId);
 				if (cur) dom.content(cur, content);
 			});
