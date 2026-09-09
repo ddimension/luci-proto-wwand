@@ -368,8 +368,10 @@ network.registerErrorCode('NO_CONTEXT',     _('Context not found'));
 network.registerErrorCode('NO_IFACE',       _('The interface could not be found'));
 network.registerErrorCode('WAITING_MODEM',  _('Waiting for modem'));
 
-/* One protocol descriptor, registered under both the current name `wwand`
-   and the historical `qmi` alias — see the tail of this file. */
+/* One protocol descriptor, registered under the single name `wwand` — see the
+   tail of this file. The historical `qmi` alias is gone: netifd sources every
+   handler in /lib/netifd/proto, so two of them claiming `qmi` would be settled
+   by load order, which no package can control. */
 var wwandProtocol = {
 	getI18n: function() {
 		return _('Cellular / 5G (wwand)');
