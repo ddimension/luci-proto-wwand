@@ -553,40 +553,23 @@ var wwandProtocol = {
 			_('Use the DNS servers the network hands out with the data session. Disable only if you run your own resolvers — without any DNS, hostname-based services (e.g. eSIM downloads) fail.'));
 		o.default = o.enabled;
 
-		o = s.taboption('connection', form.Value, 'ip6ifaceid', _('IPv6 interface identifier'),
-			_('Pins the host part of the IPv6 address while the network keeps assigning the prefix. Some networks change the identifier on a live connection — every few minutes on some carriers — which breaks firewall rules, port forwards and DNS records that name the address. Enter an identifier as <code>::1</code> or <code>::1234:5678</code>: the /64 stays whatever the network gave you and only the last 64 bits become fixed. This is allowed on mobile networks, where the whole /64 belongs to your router.') + '<br />' +
-			_('Leave empty to change nothing — that is the default and what every existing installation keeps.') + '<br />' +
-			_('<em>It cannot help if your carrier rotates the prefix itself.</em> Then the address changes no matter what is set here, and nothing on the router can prevent it.') + '<br />' +
-			_('<code>eui64</code> and <code>random</code> are the kernel\'s own generation modes and apply only where the modem sends router advertisements; they are ignored for an address the modem hands over directly. A fixed identifier works on both paths — but on the router-advertisement path the kernel only accepts it on a modem that presents an Ethernet-style link. On a raw-IP modem it is refused, and the system log says so.') + '<br />' +
-			_('Note this replaces a changing identifier with a permanent one, which makes the router easier to track from the outside. That is usually the point, but it is worth knowing.'));
-		o.value('', _('(unset — leave the address as the network assigns it)'));
-		o.value('::1', '::1');
-		o.value('eui64', _('eui64 (from the modem interface MAC, router advertisements only)'));
-		o.value('random', _('random (router advertisements only)'));
-		o.rmempty = true;
-		o.validate = function(section_id, value) {
-			if (value == null || value === '' ||
-			    value === 'eui64' || value === 'random' || value === 'stable' || value === 'none')
-				return true;
+		/* NO ip6ifaceid FIELD HERE — LuCI owns that option and will take it back.
+		   luci-mod-network's interfaces.js calls
+		     nettools.replaceOption(s, 'advanced', form.Value, 'ip6ifaceid',
+		                            _('IPv6 suffix'), ...)
+		   AFTER a protocol's renderFormOptions() has run, so an option a proto
+		   adds under that name is created and then replaced — silently. A field
+		   added here rendered nowhere, which also meant its validator never ran
+		   while the daemon went on rejecting the values it was written to catch
+		   (`::`, `::1::2`, an all-zero identifier). A form and a daemon that
+		   disagree about the same option are worse than no form at all.
+		   (LuCI Master 26.220.05397, checked on HW 2026-09-10.)
 
-			/* Only the LOW 64 bits are used, so accept exactly that shape and
-			   nothing looser: `::` followed by one to four hex groups. The
-			   earlier /^::[0-9A-Fa-f:]*$/ promised this in its comment and did
-			   not deliver — it also let through `::`, `:::`, `::1::2` and
-			   `::1:2:3:4:5`, the last of which has a non-empty network part once
-			   expanded (0:0:0:1:2:3:4:5). The daemon refuses all of those, so the
-			   form must not accept them, or the two disagree about the same
-			   value. */
-			if (!/^::[0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){0,3}$/.test(value))
-				return _('Enter an identifier as :: followed by up to four groups (for example ::1 or ::1234:5678), or eui64 / random.');
-
-			/* an all-zero identifier is <prefix>:: — the subnet-router anycast
-			   address, not a host address */
-			if (value.replace(/[:0]/g, '') === '')
-				return _('The identifier cannot be all zeros — that is the subnet-router anycast address.');
-
-			return true;
-		};
+		   The option itself works: LuCI's own "IPv6 suffix" box on Advanced
+		   Settings writes the same `option ip6ifaceid`, which is what wwand
+		   reads. Its datatype is `ip6hostid`, so it takes a literal suffix but
+		   not the `eui64` / `random` generation modes — those go in by uci or
+		   the CLI. docs/reference.md carries the full semantics. */
 
 		/* ---- Modem & SIM · Radio & Cell · Resilience (shared, edit the modem) ---- */
 		modemopts.addModemSim(s, 'modem', bindModem);
