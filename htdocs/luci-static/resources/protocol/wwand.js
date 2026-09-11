@@ -507,11 +507,21 @@ var wwandProtocol = {
 		o.password = true;
 
 		/* Mux channel: this connection's QMAP channel on the modem. 0 = the plain
-		   netdev; N > 0 = wwan0mN. Several interfaces on one modem each pick one. */
+		   netdev; N > 0 = a mux child. Several interfaces on one modem each pick
+		   one, and `auto` picks a free one for them.
+
+		   The range is 1-254, not 0-15 as this field used to say: a QMAP mux id
+		   is 8 bit with 0 reserved for the untagged parent, and the kernel takes
+		   1..254 (RMNET_MAX_LOGICAL_EP is 255 in rmnet_config.h:15 and
+		   rmnet_config.c:291-293 returns -ERANGE above 254, checked against
+		   6.18.41; qmimux is the same range). The daemon has always validated
+		   against 254, so the form was rejecting channels that work. */
 		o = s.taboption('connection', form.Value, 'mux_id', _('Mux channel'),
-			_('QMAP multiplex channel for this connection (0 = no mux). Use different channels for multiple contexts on one modem.'));
+			_('QMAP multiplex channel for this connection. <code>auto</code> muxes this modem if it can carry QMAP and runs it as a plain raw-IP parent if it cannot — the modem is asked, and a modem that answers no still comes up. 0 disables muxing. Interfaces on one modem each need their own channel; <code>auto</code> picks a free one.'));
 		o.placeholder = '0';
-		o.datatype = 'range(0,15)';
+		o.datatype = 'or("auto", 0, range(1,254))';
+		o.value('auto', _('auto — mux if the modem supports it'));
+		o.value('0', _('0 — no mux'));
 
 		o = s.taboption('connection', form.Value, 'profile', _('Attach profile index'),
 			_('3GPP profile (CID) used for the LTE attach and default bearer (default derived from mux id / 1).'));
