@@ -128,14 +128,32 @@ function renderStatus(netdev, onAdd, section_id, liveModem) {
 			if (modem.imsi)   rows.push([ _('IMSI'), modem.imsi ]);
 			if (modem.msisdn) rows.push([ _('MSISDN'), modem.msisdn ]);
 
+			/* EVERY FIELD IS CHECKED, not just the one the row is gated on.
+			 * The gate was rsrp alone and the rest were formatted
+			 * unconditionally, so a source that reports only some of them —
+			 * AT+CESQ on the NCM backend — rendered "SNR NaN dB · RSSI 0 dBm"
+			 * for measurements that were simply absent. %d of null is 0 and
+			 * (null/10).toFixed(1) is "0.0", both of which read as a reading.
+			 * format.js:372-373 has filtered each value separately all along.
+			 * Found by a full review, 2026-09-19. */
+			var part = function(v, unit, label, scale) {
+				return fmt.hasSignal(v)
+					? '%s %s %s'.format(label, scale ? (v / scale).toFixed(1) : v, unit)
+					: null;
+			};
+			var join = function(parts) {
+				return parts.filter(function(x) { return x != null; }).join(' · ');
+			};
+
 			var lte = sig.lte;
 			if (lte && fmt.hasSignal(lte.rsrp))
-				rows.push([ _('LTE signal'), 'RSRP %d dBm · RSRQ %d dB · SNR %s dB · RSSI %d dBm'.format(
-					lte.rsrp, lte.rsrq, (lte.snr/10).toFixed(1), lte.rssi) ]);
+				rows.push([ _('LTE signal'), join([
+					part(lte.rsrp, 'dBm', 'RSRP'), part(lte.rsrq, 'dB', 'RSRQ'),
+					part(lte.snr, 'dB', 'SNR', 10), part(lte.rssi, 'dBm', 'RSSI') ]) ]);
 			var nr = sig.nr5g;
 			if (nr && fmt.hasSignal(nr.rsrp))
-				rows.push([ _('5G signal'), 'RSRP %d dBm · SNR %s dB'.format(
-					nr.rsrp, (nr.snr/10).toFixed(1)) ]);
+				rows.push([ _('5G signal'), join([
+					part(nr.rsrp, 'dBm', 'RSRP'), part(nr.snr, 'dB', 'SNR', 10) ]) ]);
 
 			var lc = cells.lte_intra;
 			if (lc) {
@@ -182,13 +200,13 @@ function renderStatus(netdev, onAdd, section_id, liveModem) {
 /* A small "add to lock" button. onAdd(kind, value, section_id, btn) writes the
    value into the lock_4g list / lock_5g field. Returns '' when no handler is
    wired (e.g. the read-only status tab), so the same renderer serves both. */
-function lockBtn(onAdd, section_id, kind, value, label) {
+function lockBtn(onAdd, section_id, kind, value, label, hint) {
 	if (!onAdd || value == null)
 		return '';
 	return E('button', {
 		'class': 'btn cbi-button cbi-button-add',
 		'style': 'margin-left:8px;padding:1px 8px',
-		'title': _('Add %s to the cell lock').format(value),
+		'title': _('Add %s to the cell lock').format(value) + (hint ? ' — ' + hint : ''),
 		'click': function(ev) {
 			ev.preventDefault();
 			onAdd(kind, value, section_id, ev.currentTarget);
@@ -276,11 +294,23 @@ function renderCellScan(netdev, onAdd, section_id, liveModem) {
 			if (nc) {
 				var nf = bands.nrArfcn(cells.nr5g_arfcn);
 				/* lock_5g format: pci:arfcn:scs:band. QMI gives pci + arfcn;
-				   band is inferred from the ARFCN, scs defaults to 1 (30 kHz,
-				   the usual FR1 spacing) — the user should verify both. */
+				   the band is inferred from the ARFCN.
+				
+				   SCS IS kHz, AND IT WAS 1. The daemon passes this field
+				   verbatim into AT+QNWLOCK="common/5g" (atcmd.uc:155-160) and
+				   the documented form carries a spacing — '242:431070:15:1'
+				   (docs/reference.md:454). A '1' is not one, so the one-click
+				   lock emitted a malformed command the modem rejected, while
+				   the comment here asserted that 1 MEANT 30 kHz. 30 is the
+				   common FR1 spacing and the value the placeholder in
+				   luci-app-wwand now shows, but nothing here can know it for
+				   this cell — the modem does not report the SSB spacing — so
+				   it stays a starting point the user must confirm, which is
+				   what the button's title says. Found by a full review,
+				   2026-09-19. */
 				var nrBand = (nf && nf.band) ? nf.band.replace(/^n/, '') : null;
 				var nrLock = (cells.nr5g_arfcn != null && nrBand != null)
-					? '%d:%d:1:%s'.format(nc.pci, cells.nr5g_arfcn, nrBand) : null;
+					? '%d:%d:30:%s'.format(nc.pci, cells.nr5g_arfcn, nrBand) : null;
 
 				out.push(E('p', {}, E('strong', {}, _('5G NR cell'))));
 				out.push(tbl([
@@ -292,7 +322,8 @@ function renderCellScan(netdev, onAdd, section_id, liveModem) {
 					[ _('PCI'), E('span', {}, [
 						'' + nc.pci,
 						nrLock ? E('span', {}, [ '   →  ', E('code', {}, nrLock),
-							lockBtn(onAdd, section_id, '5g', nrLock, _('Lock this 5G cell')) ]) : '' ]) ],
+							lockBtn(onAdd, section_id, '5g', nrLock, _('Lock this 5G cell'),
+								_('the subcarrier spacing is a 30 kHz default, not a reading — check it against your band')) ]) : '' ]) ],
 					[ _('Signal'), 'RSRP %s · RSRQ %s · SNR %s'.format(
 						fmt.dBm(nc.rsrp), fmt.dB(nc.rsrq), fmt.dB(nc.snr)) ]
 				]));
