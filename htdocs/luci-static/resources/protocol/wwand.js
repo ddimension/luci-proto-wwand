@@ -145,15 +145,32 @@ function renderStatus(netdev, onAdd, section_id, liveModem) {
 				return parts.filter(function(x) { return x != null; }).join(' · ');
 			};
 
+			/* THE ROW EXISTS IF ANY READING DOES, and gating it on RSRP was the
+			   same mistake one level up from the one `part` fixes: a modem that
+			   reports SNR and RSSI but no RSRP — MBIM v2 gives no per-RAT RSRQ
+			   at all, and the AT paths vary by vendor — had its whole line
+			   dropped, not just the missing field. `part` already returns null
+			   for an absent value and keeps a legitimate 0, so building the
+			   parts first and asking whether anything survived is both simpler
+			   and right. Found by review, 2026-09-20. */
+			var row = function(label, parts) {
+				var txt = join(parts);
+				if (txt.length) rows.push([ label, txt ]);
+			};
+
 			var lte = sig.lte;
-			if (lte && fmt.hasSignal(lte.rsrp))
-				rows.push([ _('LTE signal'), join([
+			if (lte)
+				row(_('LTE signal'), [
 					part(lte.rsrp, 'dBm', 'RSRP'), part(lte.rsrq, 'dB', 'RSRQ'),
-					part(lte.snr, 'dB', 'SNR', 10), part(lte.rssi, 'dBm', 'RSSI') ]) ]);
+					part(lte.snr, 'dB', 'SNR', 10), part(lte.rssi, 'dBm', 'RSSI') ]);
 			var nr = sig.nr5g;
-			if (nr && fmt.hasSignal(nr.rsrp))
-				rows.push([ _('5G signal'), join([
-					part(nr.rsrp, 'dBm', 'RSRP'), part(nr.snr, 'dB', 'SNR', 10) ]) ]);
+			/* RSRQ belongs here too: the daemon reports nr5g.rsrq on the AT
+			   paths (telemetry_ncm.uc) and the 5G cell table below has always
+			   rendered it — the summary line was the one place it was missing */
+			if (nr)
+				row(_('5G signal'), [
+					part(nr.rsrp, 'dBm', 'RSRP'), part(nr.rsrq, 'dB', 'RSRQ'),
+					part(nr.snr, 'dB', 'SNR', 10), part(nr.rssi, 'dBm', 'RSSI') ]);
 
 			var lc = cells.lte_intra;
 			if (lc) {
@@ -309,7 +326,12 @@ function renderCellScan(netdev, onAdd, section_id, liveModem) {
 				   what the button's title says. Found by a full review,
 				   2026-09-19. */
 				var nrBand = (nf && nf.band) ? nf.band.replace(/^n/, '') : null;
-				var nrLock = (cells.nr5g_arfcn != null && nrBand != null)
+				/* the PCI is the first field of the lock and was the one thing
+				   not checked: a null there rendered as 0 and produced a
+				   syntactically valid string naming cell 0, which the modem
+				   would accept and then fail to find. Withhold the button
+				   instead. Found by review, 2026-09-20. */
+				var nrLock = (nc.pci != null && cells.nr5g_arfcn != null && nrBand != null)
 					? '%d:%d:30:%s'.format(nc.pci, cells.nr5g_arfcn, nrBand) : null;
 
 				out.push(E('p', {}, E('strong', {}, _('5G NR cell'))));
@@ -329,7 +351,7 @@ function renderCellScan(netdev, onAdd, section_id, liveModem) {
 				]));
 				if (onAdd && nrLock)
 					out.push(E('p', { 'style': 'color:#666;font-size:90%' },
-						_('5G SA lock is only supported in standalone mode; the scs value defaults to 1 (30 kHz) and the band is inferred — verify both before applying.')));
+						_('5G SA lock is only supported in standalone mode; the subcarrier spacing is filled in as 30 kHz and the band is inferred — verify both before applying.')));
 			}
 
 			if (!out.length)
