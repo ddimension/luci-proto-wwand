@@ -468,7 +468,14 @@ var wwandProtocol = {
 		s.tab('resilience', _('Resilience'), _('Recovery, watchdogs and telemetry cadence.'));
 
 		/* ---- General: live status + the modem this connection uses ---- */
+		/* `o.description`, NOT a fmt.term() title. The tooltip would have read
+		   better here — these are read-only panels, and a description under a
+		   live table reads as a caption for the data. But form.js only emits a
+		   label when the title is a STRING (`typeof(this.title)==='string'`,
+		   form.js renderFrame), so a DOM-node title costs the heading
+		   altogether. A tooltip is not worth losing the title for. */
 		o = liveField(s, 'general', '_status', _('Modem status'), renderStatus);
+		o.description = _('Live from the daemon, refreshed while this page is open: what the modem is, where it is registered, what it is carrying. Read-only — the settings that shape it are on the other tabs and under Network → Modems.');
 		o._netdev = netdev;
 
 		/* the modem REFERENCE (`option modem 'wwmodem0'` on the interface) —
@@ -671,6 +678,7 @@ var wwandProtocol = {
 		};
 
 		o = liveField(s, 'radio', '_cellscan', _('Current cells'), renderCellScan, addToLock);
+		o.description = _('The cells this modem can see right now: the serving cell, its aggregated carriers and the LTE neighbours. The lock value beside a cell is what to put in the cell-lock field to pin the modem to it.');
 		o._netdev = netdev;
 
 		locks = modemopts.addCellLock(s, 'radio', bindModem);
