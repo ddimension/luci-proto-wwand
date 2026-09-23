@@ -462,10 +462,24 @@ var wwandProtocol = {
 		   modem-owned tabs (Modem & SIM / Radio & Cell / Resilience) edit the
 		   referenced wwand_modem inline (WireGuard-style); the same option set is
 		   available standalone on Network → Modems (shared via wwand.modemopts). */
+		/* THREE OF THESE FOUR TABS EDIT A SECTION THIS INTERFACE ONLY POINTS
+		   AT, and until now none of them said so. They are shown here because
+		   setting up one connection should not need two pages — but the
+		   wwand_modem section describes the HARDWARE and is shared by every
+		   interface that names it, so a change made here lands on all of them.
+
+		   Two reporters arrived at that from opposite directions within a day:
+		   one set the SIM slot on one of his two interfaces and watched it
+		   appear on the other (ddimension/wwand#39), the other could not turn
+		   a modem flag off here at all because clearing a shared option is the
+		   Modems page's job (ddimension/luci-app-wwand#11). Both were the UI
+		   declining to mention whose settings these are. */
+		var sharedNote = _('These settings belong to the modem itself, not to this connection, and are shared by every interface using it — the same fields are on Network → Modems.');
+
 		s.tab('connection', _('Connection'), _('APN and data-bearer settings for this connection.'));
-		s.tab('modem', _('Modem & SIM'), _('The modem hardware and its SIM.'));
-		s.tab('radio', _('Radio & Cell'), _('Radio technology, manual operator selection and cell lock.'));
-		s.tab('resilience', _('Resilience'), _('Recovery, watchdogs and telemetry cadence.'));
+		s.tab('modem', _('Modem & SIM'), _('The modem hardware and its SIM.') + ' ' + sharedNote);
+		s.tab('radio', _('Radio & Cell'), _('Radio technology, manual operator selection and cell lock.') + ' ' + sharedNote);
+		s.tab('resilience', _('Resilience'), _('Recovery, watchdogs and telemetry cadence.') + ' ' + sharedNote);
 
 		/* ---- General: live status + the modem this connection uses ---- */
 		/* `o.description`, NOT a fmt.term() title. The tooltip would have read
