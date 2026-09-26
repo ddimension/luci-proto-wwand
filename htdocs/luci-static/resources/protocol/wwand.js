@@ -420,6 +420,7 @@ network.registerErrorCode('PIN_FAILED',     _('SIM PIN error'));
 network.registerErrorCode('NO_CONTEXT',     _('Context not found'));
 network.registerErrorCode('NO_IFACE',       _('The interface could not be found'));
 network.registerErrorCode('WAITING_MODEM',  _('Waiting for modem'));
+network.registerErrorCode('RADIO_HELD',     _('Radio off: the SIM card is lent to another modem'));
 
 /* One protocol descriptor, registered under the single name `wwand` — see the
    tail of this file. The historical `qmi` alias is gone: netifd sources every
