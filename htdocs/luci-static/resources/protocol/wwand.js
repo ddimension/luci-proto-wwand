@@ -616,6 +616,28 @@ var wwandProtocol = {
 			_('Off (default): the IPv4 address is configured as /32 point-to-point.'));
 		o.default = '0';
 
+		// tri-state on purpose: empty leaves the modem's profile as it is
+		o = s.taboption('connection', form.ListValue, 'ipv6_pd', _('IPv6 prefix delegation'),
+			_('The flag in the dialled modem profile that lets a delegated IPv6 prefix through to this router; the prefix is then read back from the modem. Needed for a prefix but not enough: the subscription must delegate one. QMI modems, and Quectel modems in NCM mode; ignored for IPv4-only connections and on MBIM.'));
+		o.value('', _('Leave modem profile unchanged'));
+		o.value('1', _('Allow'));
+		o.value('0', _('Disallow'));
+		o.optional = true;
+
+		o = s.taboption('connection', form.ListValue, 'clat', _('CLAT (464XLAT in the modem)'),
+			_('QMI modems: the flag in the dialled modem profile that lets the modem translate IPv4 onto an IPv6-only bearer. Ignored for IPv4-only connections and on MBIM/NCM modems.'));
+		o.value('', _('Leave modem profile unchanged'));
+		o.value('1', _('Enable'));
+		o.value('0', _('Disable'));
+		o.optional = true;
+
+		o = s.taboption('connection', form.ListValue, 'address_allocation', _('IPv4 address allocation'),
+			_('How the modem profile asks for the IPv4 address — with the connection setup, or by DHCP over the bearer afterwards. QMI and NCM modems; ignored on MBIM.'));
+		o.value('', _('Leave modem profile unchanged'));
+		o.value('nas', _('With the connection setup (NAS)'));
+		o.value('dhcp', _('By DHCP'));
+		o.optional = true;
+
 		o = s.taboption('connection', form.Value, 'settings_poll', _('Settings poll interval'),
 			_('Seconds between re-checks of network-pushed IP/DNS/MTU settings (0 = off).'));
 		o.placeholder = '300';
