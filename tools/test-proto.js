@@ -76,7 +76,7 @@ function withModule(rpc, fn) {
 	const stub = new Proxy({}, { get: () => () => null });
 
 	const fn2 = new Function(
-		'L', 'E', '_', 'dom', 'ui', 'uci', 'form', 'network',
+		'L', 'E', '_', 'dom', 'ui', 'uci', 'form', 'network', 'rpc',
 		'bands', 'modemopts', 'wrpc', 'fmt', 'modemsid', src);
 
 	const mod = fn2(
@@ -85,6 +85,7 @@ function withModule(rpc, fn) {
 		E, (s) => s, stub, stub, stub, stub,
 		new Proxy({ registerProtocol: (n, o) => o },
 			{ get: (t, k) => (k in t) ? t[k] : (() => null) }),
+		{ declare: () => () => Promise.resolve({}) },
 		{ lteEarfcn: () => null, nrArfcn: () => ({ band: 'n78' }) },
 		stub, rpc, fmt,
 		{ modemSid: () => null, bindModem: () => null });

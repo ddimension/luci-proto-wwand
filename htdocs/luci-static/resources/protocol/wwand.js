@@ -4,6 +4,7 @@
 'require uci';
 'require form';
 'require network';
+'require rpc';
 'require wwand.bands as bands';
 'require wwand.modemopts as modemopts';
 'require wwand.rpc as wrpc';
@@ -28,6 +29,11 @@ var bindModem = modemsid.bindModem;
 var callStatus = wrpc.status;
 var callSignal = wrpc.signal;
 var callCells = wrpc.cells;
+
+/* every SIM card the daemon has seen, by ICCID, and where it is — the
+   choices of the "SIM card" field. Declared here rather than in wwand.rpc so
+   this form keeps working next to an older luci-app-wwand. */
+var callInventory = rpc.declare({ object: 'wwand', method: 'sim_inventory', expect: { '': {} } });
 
 /* manual PIN release past the low-retry safety block */
 var callPinVerify = wrpc.pinVerify;
@@ -420,6 +426,10 @@ network.registerErrorCode('PIN_FAILED',     _('SIM PIN error'));
 network.registerErrorCode('NO_CONTEXT',     _('Context not found'));
 network.registerErrorCode('NO_IFACE',       _('The interface could not be found'));
 network.registerErrorCode('WAITING_MODEM',  _('Waiting for modem'));
+network.registerErrorCode('SWITCHING_SIM',  _('Switching to this connection\'s SIM card'));
+network.registerErrorCode('SIM_IN_USE',     _('The modem is in use by another connection bound to a different SIM card'));
+network.registerErrorCode('SIM_NOT_HERE',   _('This connection\'s SIM card is not in this modem'));
+network.registerErrorCode('SIM_SWITCH_FAILED', _('Switching to this connection\'s SIM card failed'));
 network.registerErrorCode('RADIO_HELD',     _('Radio off: held by an optional package (SIM card lent to another modem, or remote SIM not in use yet) — the modem status says why'));
 
 /* One protocol descriptor, registered under the single name `wwand` — see the
@@ -514,6 +524,48 @@ var wwandProtocol = {
 				if (!listed)
 					opt.value('', _('(no modem configured — add one on Network → Modems)'));
 				return form.ListValue.prototype.load.apply(this, [section_id]);
+			}, this));
+		};
+
+		/* THE CARD BELONGS TO THE CONNECTION (`option iccid`), not to the
+		   modem: interface-owned, like the APN. The choices are the cards the
+		   daemon has seen (sim_inventory), named after their SIM override when
+		   it has one, since an ICCID alone does not say which card is which
+		   (ddimension/wwand#39); a value typed by hand is kept, for a card
+		   not inserted yet. Labels are plain strings: the dropdown escapes
+		   them itself. */
+		o = s.taboption('general', form.Value, 'iccid', _('SIM card'),
+			_('Bind this connection to one SIM card, by its ICCID. When the connection starts and the modem runs another card, wwand switches to the SIM slot or eSIM profile that holds it, then connects. While it is up, a connection bound to a different card on the same modem is refused, and a manual SIM switch asks first. If the card is changed under it, the connection goes down and stays down until it is started again. Leave empty to use whichever card the modem runs. The card\'s PIN and APN come from its SIM override on Network → Modems.'));
+		o.rmempty = true;
+		o.placeholder = _('any card');
+		o.validate = function(section_id, value) {
+			var v = String(value || '').replace(/[\s-]/g, '').replace(/[fF]+$/, '');
+
+			if (v == '' || /^[0-9]{18,22}$/.test(v))
+				return true;
+
+			return _('An ICCID has 18 to 22 digits');
+		};
+		o.load = function(section_id) {
+			return L.resolveDefault(callInventory(), {}).then(L.bind(function(inv) {
+				var opt = this;
+
+				((inv && inv.cards) || []).forEach(function(c) {
+					if (!c || !c.iccid)
+						return;
+
+					var place = c.reader ? _('remote SIM in reader %s').format(c.reader)
+						: (c.profile && c.modem) ? _('eSIM profile on %s').format(c.modem)
+						: (c.modem && c.slot != null) ? _('%s, slot %d').format(c.modem, c.slot)
+						: c.modem ? String(c.modem) : '';
+
+					if (!c.present)
+						place = place ? _('%s, not present').format(place) : _('not present');
+
+					opt.value(c.iccid, (c.name ? String(c.name) + ' · ' : '') + c.iccid + (place ? ' — ' + place : ''));
+				});
+
+				return form.Value.prototype.load.apply(this, [section_id]);
 			}, this));
 		};
 
