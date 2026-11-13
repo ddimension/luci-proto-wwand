@@ -426,6 +426,7 @@ network.registerErrorCode('PIN_FAILED',     _('SIM PIN error'));
 network.registerErrorCode('NO_CONTEXT',     _('Context not found'));
 network.registerErrorCode('NO_IFACE',       _('The interface could not be found'));
 network.registerErrorCode('WAITING_MODEM',  _('Waiting for modem'));
+network.registerErrorCode('THROTTLED',      _('The modem holds this APN back after network rejections; wwand dials again when the back-off ends'));
 network.registerErrorCode('SWITCHING_SIM',  _('Switching to this connection\'s SIM card'));
 network.registerErrorCode('SIM_IN_USE',     _('The modem is in use by another connection bound to a different SIM card'));
 network.registerErrorCode('SIM_NOT_HERE',   _('This connection\'s SIM card is not in this modem'));
