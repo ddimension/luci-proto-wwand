@@ -678,7 +678,7 @@ var wwandProtocol = {
 		o.optional = true;
 
 		o = s.taboption('connection', form.ListValue, 'clat', _('CLAT (464XLAT in the modem)'),
-			_('QMI modems: the flag in the dialled modem profile that lets the modem translate IPv4 onto an IPv6-only bearer. Ignored for IPv4-only connections and on MBIM/NCM modems.'));
+			_('QMI modems: the flag in the dialled modem profile that lets the modem translate IPv4 onto an IPv6-only bearer. Enabled on an IPv6-only connection, IPv4 is started as well and the modem translates it; if it gives no IPv4 address the connection stays IPv6-only. Ignored for IPv4-only connections and on MBIM/NCM modems.'));
 		o.value('', _('Leave modem profile unchanged'));
 		o.value('1', _('Enable'));
 		o.value('0', _('Disable'));
