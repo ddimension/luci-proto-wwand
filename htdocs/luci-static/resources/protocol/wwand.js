@@ -431,6 +431,7 @@ network.registerErrorCode('SWITCHING_SIM',  _('Switching to this connection\'s S
 network.registerErrorCode('SIM_IN_USE',     _('The modem is in use by another connection bound to a different SIM card'));
 network.registerErrorCode('SIM_NOT_HERE',   _('This connection\'s SIM card is not in this modem'));
 network.registerErrorCode('SIM_SWITCH_FAILED', _('Switching to this connection\'s SIM card failed'));
+network.registerErrorCode('DETACHED',      _('Detached from the network by the operator; attaching the modem again brings the connection up'));
 network.registerErrorCode('RADIO_HELD',     _('Radio off: held by an optional package (SIM card lent to another modem, or remote SIM not in use yet) — the modem status says why'));
 
 /* One protocol descriptor, registered under the single name `wwand` — see the
@@ -542,10 +543,10 @@ var wwandProtocol = {
 		o.validate = function(section_id, value) {
 			var v = String(value || '').replace(/[\s-]/g, '').replace(/[fF]+$/, '');
 
-			if (v == '' || /^[0-9]{18,22}$/.test(v))
+			if (v == '' || /^[0-9]{18,20}$/.test(v))
 				return true;
 
-			return _('An ICCID has 18 to 22 digits');
+			return _('An ICCID has 18 to 20 digits');
 		};
 		o.load = function(section_id) {
 			return L.resolveDefault(callInventory(), {}).then(L.bind(function(inv) {
