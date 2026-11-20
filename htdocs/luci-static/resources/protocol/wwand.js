@@ -663,7 +663,7 @@ var wwandProtocol = {
 		o.datatype = 'max(9200)';
 
 		o = s.taboption('connection', form.Flag, 'use_pushed_mtu', _('Use modem-pushed MTU'),
-			_('Apply the MTU the network advertises for the bearer (default on).'));
+			_('Apply the MTU the network advertises for the bearer when no MTU override is set (default on).'));
 		o.default = '1';
 
 		o = s.taboption('connection', form.Flag, 'use_pushed_prefix', _('Use network-pushed IPv4 prefix'),
