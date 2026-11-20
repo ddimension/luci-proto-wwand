@@ -21,6 +21,8 @@ handed over by migrating it, never by an alias.
   RSSI) and the ready-to-use `earfcn:pci` lock value — plus the `lock_4g`,
   `lock_5g`, `lock_persist` fields.
 - Modem-device dropdown populated from `wwand status` (netdev + model/IMEI).
+- **SIM card** field (`option iccid`): binds the connection to one card,
+  picked from the cards wwand has seen (`sim_inventory`).
 
 Band and frequency are derived client-side from EARFCN (LTE) / ARFCN (NR).
 Bandwidth is shown when the daemon reports it (`bandwidth` field on a cell).
@@ -29,8 +31,11 @@ Bandwidth is shown when the daemon reports it (`bandwidth` field on a cell).
 
 Ships one protocol file, `…/resources/protocol/wwand.js`. It installs
 **alongside** `luci-proto-qmi` — the two claim different protocol names and
-different paths — so nothing has to be removed first. Depends on `wwand`.
+different paths — so nothing has to be removed first. Depends on `luci-base`,
+`wwand` and `luci-app-wwand`.
 
 The ACL `root/usr/share/rpcd/acl.d/luci-proto-wwand.json` grants the LuCI
-session read access to the `wwand` ubus object (status/modem_signal/
-modem_cells/context_status).
+session read access to the `wwand` ubus object (`status`, `modem_signal`,
+`modem_cells`, `modem_sim_slots`, `modem_probe`, `sim_inventory`) and to the
+`/sys/class/gpio/` listing, plus write access to `modem_reset` and
+`modem_sim_pin_verify`.
