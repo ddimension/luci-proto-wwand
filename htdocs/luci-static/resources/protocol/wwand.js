@@ -586,7 +586,7 @@ var wwandProtocol = {
 
 		/* ---- Connection (interface-owned) ---- */
 		o = s.taboption('connection', form.Value, 'apn', _('APN'),
-			_('Leave empty for the default APN (or the SIM override / network default), or "#N" to use modem profile N as-is.'));
+			_('Leave empty for the default APN (or the SIM override / network default), or "#N" to keep the APN and login of modem profile N; the PDP type and the profile flags below are still applied to it.'));
 
 		o = s.taboption('connection', form.ListValue, 'pdp_type', _('PDP type'),
 			_('IP version(s) to request for the bearer and the LTE attach. IPv4+IPv6 is recommended — some subscriptions reject an IPv4-only attach (EMM cause 33).'));
@@ -614,22 +614,32 @@ var wwandProtocol = {
 			uci.unset('network', sid, 'pdptype');
 		};
 
+		/* Unset auth is a state of its own, not "none": the daemon dials a
+		   username/password without an auth type as PAP/CHAP (wwand context.uc
+		   prepare, `else if (username && password)`), and migrated configs carry
+		   exactly that. Shown as "none" with the credentials depending on
+		   pap/chap/both, the credentials were hidden — and a hidden option is
+		   removed on save (form.js:2175-2176), so editing anything else on the
+		   page deleted the login. */
 		o = s.taboption('connection', form.ListValue, 'auth', _('Authentication type'),
-			_('PAP/CHAP authentication for the APN. Most operators need none.'));
-		o.default = 'none';
+			_('PAP/CHAP authentication for the APN. Most operators need none. Automatic: none without a username, PAP/CHAP with one.'));
+		o.value('', _('Automatic'));
 		o.value('none', _('None'));
 		o.value('pap', 'PAP');
 		o.value('chap', 'CHAP');
 		o.value('both', 'PAP/CHAP');
+		o.optional = true;
 
 		o = s.taboption('connection', form.Value, 'username', _('PAP/CHAP username'),
 			_('Only if the APN requires authentication.'));
+		o.depends('auth', '');
 		o.depends('auth', 'pap');
 		o.depends('auth', 'chap');
 		o.depends('auth', 'both');
 
 		o = s.taboption('connection', form.Value, 'password', _('PAP/CHAP password'),
 			_('Password for the APN authentication.'));
+		o.depends('auth', '');
 		o.depends('auth', 'pap');
 		o.depends('auth', 'chap');
 		o.depends('auth', 'both');
@@ -646,15 +656,15 @@ var wwandProtocol = {
 		   6.18.41; qmimux is the same range). The daemon has always validated
 		   against 254, so the form was rejecting channels that work. */
 		o = s.taboption('connection', form.Value, 'mux_id', _('Mux channel'),
-			_('QMAP multiplex channel for this connection. <code>auto</code> muxes this modem if it can carry QMAP and runs it as a plain raw-IP parent if it cannot — the modem is asked, and a modem that answers no still comes up. 0 disables muxing. Interfaces on one modem each need their own channel; <code>auto</code> picks a free one.'));
+			_('QMAP multiplex channel for this connection. <code>auto</code> muxes this modem if it can carry QMAP and runs it as a plain raw-IP parent if it cannot — the modem is asked, and a modem that answers no still comes up. 0 means no mux — unless another interface on this modem is muxed, then it gets a free channel too, since a muxed modem carries only mux frames. Interfaces on one modem each need their own channel; <code>auto</code> picks a free one.'));
 		o.placeholder = '0';
 		o.datatype = 'or("auto", 0, range(1,254))';
 		o.value('auto', _('auto — mux if the modem supports it'));
 		o.value('0', _('0 — no mux'));
 
-		o = s.taboption('connection', form.Value, 'profile', _('Attach profile index'),
-			_('3GPP profile (CID) used for the LTE attach and default bearer (default derived from mux id / 1).'));
-		o.placeholder = '1';
+		o = s.taboption('connection', form.Value, 'profile', _('Profile index'),
+			_('QMI modems: the 3GPP profile (CID) this connection dials, and wwand writes its APN into. Empty: mux 0/1 uses the modem\'s attach profile; mux 2 and up gets a profile of its own, named <code>wwand:</code> followed by the interface name, so the modem\'s own profiles (ims, sos) stay untouched.'));
+		o.placeholder = _('automatic');
 		o.datatype = 'uinteger';
 
 		o = s.taboption('connection', form.Value, 'mtu', _('Override MTU'),
@@ -691,6 +701,20 @@ var wwandProtocol = {
 		o.value('nas', _('With the connection setup (NAS)'));
 		o.value('dhcp', _('By DHCP'));
 		o.optional = true;
+
+		/* tri-state like the flags above (wwand config.uc: unset = null) */
+		o = s.taboption('connection', form.ListValue, 'ims', _('IMS PDN'),
+			_('QMI modems: this connection is an IMS PDN for a client on the router that speaks IMS itself (e.g. wwand-ims). Sets the P-CSCF-via-PCO and IM CN flags in the dialled profile and reports the P-CSCF in the status. A per-SIM override does not change the APN, login or PDP type of an IMS PDN.'));
+		o.value('', _('Leave modem profile unchanged'));
+		o.value('1', _('IMS PDN'));
+		o.value('0', _('Not an IMS PDN'));
+		o.optional = true;
+
+		/* not in LuCI's own advanced tab for proto wwand: that offers
+		   sourcefilter only to the protos it knows (interfaces.js:296-310) */
+		o = s.taboption('connection', form.Flag, 'sourcefilter', _('IPv6 source routing'),
+			_('Install the IPv6 default route with the address prefix as source (default on, as uqmi does). Turn off for a plain default route — needed on kernels without IPv6 subtrees, and the fix in some field cases.'));
+		o.default = o.enabled;
 
 		o = s.taboption('connection', form.Value, 'settings_poll', _('Settings poll interval'),
 			_('Seconds between re-checks of network-pushed IP/DNS/MTU settings (0 = off).'));
